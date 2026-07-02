@@ -499,22 +499,33 @@ const CL_API_KEY = '947222283424236', CL_API_SECRET = 'oDGIa0KI-R6KhOazJR7g5sWMz
 async function sha1(str){ const b = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
 function publicIdFromUrl(url){ const m = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+$/); return m?m[1]:null; }
 async function deleteFromCloudinary(url){
-  const pid = publicIdFromUrl(url); if(!pid) return;
+  const pid = publicIdFromUrl(url); if(!pid) return true;
   const ts = Math.floor(Date.now()/1000);
   const sig = await sha1(`public_id=${pid}&timestamp=${ts}${CL_API_SECRET}`);
   const fd = new FormData();
   fd.append('public_id', pid); fd.append('timestamp', ts); fd.append('api_key', CL_API_KEY); fd.append('signature', sig);
-  try{ await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/destroy`, {method:'POST', body:fd}); }catch(e){ console.error(e); }
+  try{
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/destroy`, {method:'POST', body:fd});
+    const data = await res.json();
+    return data.result === 'ok' || data.result === 'not found';
+  }catch(e){ console.error(e); return false; }
 }
 async function deleteQaimePhotos(q){
   const all = [...(q.photos||[]), ...(q.medaxilPhotos||[])];
-  await Promise.all(all.map(deleteFromCloudinary));
+  const results = await Promise.all(all.map(async u=>({u, ok: await deleteFromCloudinary(u)})));
+  const failed = results.filter(r=>!r.ok).map(r=>r.u);
+  if(failed.length){
+    try{ await db.collection('failedDeletes').add({qaimeNo:q.no||null, urls:failed, at: firebase.firestore.FieldValue.serverTimestamp()}); }catch(e){ console.error(e); }
+  }
+  return failed;
 }
 async function deleteQaime(id){
   if(!confirm('Qaimə silinsin?')) return;
   const q = qaimeler.find(x=>x.id===id);
-  if(q) await deleteQaimePhotos(q);
+  let failed = [];
+  if(q) failed = await deleteQaimePhotos(q);
   await db.collection('qaimeler').doc(id).delete();
+  if(failed.length) alert(`Diqqət: ${failed.length} şəkil Cloudinary-dən silinmədi. Admin panelinə qeyd olundu.`);
 }
 function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
 function toggleSel(id){ selected.has(id)?selected.delete(id):selected.add(id); render(); }
