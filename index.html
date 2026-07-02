@@ -46,7 +46,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 .badge{background:#c0392b;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px}
 .small{font-size:12px;color:#666}
 .imgpick{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.imgpick img{width:60px;height:60px;object-fit:cover;border-radius:4px}
+.imgpick img{width:60px;height:60px;object-fit:cover;border-radius:4px;cursor:pointer}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{border:1px solid #ddd;padding:6px;text-align:left}
 .bar-chart div.bg{background:#eee;border-radius:3px;margin:4px 0}
@@ -105,6 +105,48 @@ let dismissed = new Set();
 let pendingNotifIds = [];
 let pickedFiles = [];
 let medPicked = [];
+let pendingQaimeler = [];
+let sending = false;
+
+const IDB_NAME='qaimeOffline', IDB_STORE='pending';
+function idbOpen(){ return new Promise((res,rej)=>{ const req=indexedDB.open(IDB_NAME,1); req.onupgradeneeded=()=>req.result.createObjectStore(IDB_STORE,{keyPath:'localId'}); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
+async function idbPut(rec){ const d=await idbOpen(); return new Promise((res,rej)=>{ const tx=d.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).put(rec); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+async function idbDelete(id){ const d=await idbOpen(); return new Promise((res,rej)=>{ const tx=d.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).delete(id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+async function idbAll(){ const d=await idbOpen(); return new Promise((res,rej)=>{ const req=d.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).getAll(); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
+async function loadPending(){ pendingQaimeler = (await idbAll()).filter(r=>r.qType==='sifaris'); render(); trySendAll(); }
+async function trySendOne(rec){
+  if(!rec) return false;
+  try{
+    const wm = [`Sifarişçi: ${rec.sifarisVeren}`, `Anbar: ${rec.anbar}`, `Kim üçün: ${rec.kimUcun}`, `Ödəniş: ${rec.odenisTipi}`];
+    const photos = [];
+    for(const f of rec.files){ const blob = await compressImage(f, 1200, 0.7, wm); photos.push(await uploadToCloudinary(blob)); }
+    const no = await db.runTransaction(async t=>{
+      const ref = db.collection('meta').doc('counter');
+      const snap = await t.get(ref);
+      const val = (snap.exists? snap.data().value:0)+1;
+      t.set(ref,{value:val});
+      return val;
+    });
+    await db.collection('qaimeler').add({
+      no, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
+      tecili: rec.tecili, photos, photosUploading:false, status:'yeni', isleyen:null, problem:null,
+      medaxilPhotos: [], medaxilPhotosUploading:false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(), medaxilNo:null
+    });
+    await idbDelete(rec.localId);
+    pendingQaimeler = pendingQaimeler.filter(x=>x.localId!==rec.localId);
+    render();
+    return true;
+  }catch(e){ console.error(e); return false; }
+}
+async function trySendAll(){
+  if(sending || !navigator.onLine) return;
+  sending = true;
+  for(const rec of [...pendingQaimeler]){ await trySendOne(rec); }
+  sending = false;
+}
+window.addEventListener('online', trySendAll);
+setInterval(trySendAll, 20000);
 
 function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin',istehsalat:'İstehsalat'}[r]||r; }
 
@@ -161,6 +203,7 @@ function boot(){
   document.getElementById('userInfo').onclick = logout;
   renderModeSwitch();
   setupNav();
+  loadPending();
   db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
     render();
@@ -219,6 +262,8 @@ function render(){
   const af = document.activeElement;
   const afId = af && af.id, afStart = af && af.selectionStart, afEnd = af && af.selectionEnd;
   document.querySelectorAll('#navTabs button').forEach(b=>b.classList.toggle('active', b.dataset.n===curNav));
+  const mineBtn = document.querySelector('#navTabs button[data-n="mine"]');
+  if(mineBtn) mineBtn.innerHTML = 'Mənim Qaimlərim' + (pendingQaimeler.length?` <span class="badge">${pendingQaimeler.length}</span>`:'');
   const m = document.getElementById('main');
   if(currentUser.mode==='sifarisci'){
     if(curNav==='add') m.innerHTML = viewAddForm();
@@ -271,8 +316,9 @@ function onPick(e){
   renderPreview();
 }
 function renderPreview(){
+  const urls = pickedFiles.map(p=>p.url);
   document.getElementById('picPreview').innerHTML = pickedFiles.map((p,i)=>
-    `<div style="position:relative"><img src="${p.url}"><button onclick="pickedFiles.splice(${i},1);renderPreview()" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;padding:0;border-radius:50%;background:#c0392b">×</button></div>`
+    `<div style="position:relative"><img src="${p.url}" onclick="openViewer(${JSON.stringify(urls).replace(/"/g,'&quot;')},${i})"><button onclick="event.stopPropagation();pickedFiles.splice(${i},1);renderPreview()" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;padding:0;border-radius:50%;background:#c0392b">×</button></div>`
   ).join('');
 }
 function compressImage(file, maxSize=1200, quality=0.7, wmLines=null){
@@ -330,36 +376,39 @@ async function submitQaime(){
   const err = document.getElementById('addErr');
   if(!anbar || !kim || !odenis){ err.innerText='Anbar, kim üçün və ödəniş tipi mütləqdir'; return; }
   err.innerText = '';
-  const btn = document.getElementById('submitBtn'); btn.disabled = true; btn.innerText = 'Göndərilir...';
-  try{
-    const wm = [`Sifarişçi: ${currentUser.name}`, `Anbar: ${anbar}`, `Kim üçün: ${kim}`, `Ödəniş: ${odenis}`];
-    const photos = [];
-    for(const p of pickedFiles){ const blob = await compressImage(p.file, 1200, 0.7, wm); photos.push(await uploadToCloudinary(blob)); }
-    const no = await db.runTransaction(async t=>{
-      const ref = db.collection('meta').doc('counter');
-      const snap = await t.get(ref);
-      const val = (snap.exists? snap.data().value:0)+1;
-      t.set(ref,{value:val});
-      return val;
-    });
-    await db.collection('qaimeler').add({
-      no, sifarisVeren: currentUser.name, anbar, kimUcun: kim, odenisTipi: odenis, qeyd,
-      tecili, photos, photosUploading:false, status:'yeni', isleyen:null, problem:null,
-      medaxilPhotos: [], medaxilPhotosUploading:false,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(), medaxilNo:null
-    });
-    pickedFiles = [];
-    curNav='mine'; render();
-  }catch(e){
-    console.error(e);
-    alert('Qaimə əlavə edilmədi — internet bağlantısında problem var. Yenidən cəhd edin.');
-    btn.disabled = false; btn.innerText = 'Əlavə Et';
-  }
+  const rec = {
+    localId: 'p'+Date.now()+Math.random().toString(36).slice(2),
+    qType:'sifaris', sifarisVeren: currentUser.name, anbar, kimUcun: kim, odenisTipi: odenis, qeyd, tecili,
+    files: pickedFiles.map(p=>p.file)
+  };
+  await idbPut(rec);
+  pendingQaimeler.push(rec);
+  pickedFiles = [];
+  curNav='mine'; render();
+  trySendAll();
 }
 
 function viewMine(){
   const mine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
-  return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})</h3>${listHead()}${mine.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}</div>`;
+  const pend = pendingQaimeler;
+  return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>${listHead()}${pend.map(r=>pendingRowHtml(r)).join('')}${mine.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}</div>`;
+}
+function pendingRowHtml(rec){
+  return `<div class="row tecili">
+    <div class="line-grid">
+      <span class="col-check"></span>
+      <span><b>Göndərilməyib</b></span>
+      <span>${rec.sifarisVeren}</span>
+      <span>${rec.anbar}</span>
+      <span>${rec.kimUcun}</span>
+      <span>${rec.odenisTipi}</span>
+    </div>
+    <div class="line-extras">
+      <span class="badge">Göndərilməyib</span>
+      <span class="small">İnternet gözlənilir...</span>
+      <button onclick="trySendOne(pendingQaimeler.find(x=>x.localId==='${rec.localId}'))">Yenidən göndər</button>
+    </div>
+  </div>`;
 }
 
 function viewAnbarList(src){
@@ -636,8 +685,9 @@ function onMedPick(e){
 function renderMedPreview(){
   const el = document.getElementById('medPreview');
   if(!el) return;
+  const urls = medPicked.map(p=>p.url);
   el.innerHTML = medPicked.map((p,i)=>
-    `<div style="position:relative"><img src="${p.url}"><button onclick="medPicked.splice(${i},1);renderMedPreview()" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;padding:0;border-radius:50%;background:#c0392b">×</button></div>`
+    `<div style="position:relative"><img src="${p.url}" onclick="openViewer(${JSON.stringify(urls).replace(/"/g,'&quot;')},${i})"><button onclick="event.stopPropagation();medPicked.splice(${i},1);renderMedPreview()" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;padding:0;border-radius:50%;background:#c0392b">×</button></div>`
   ).join('');
 }
 document.addEventListener('paste', e=>{
