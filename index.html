@@ -106,7 +106,7 @@ let pendingNotifIds = [];
 let pickedFiles = [];
 let medPicked = [];
 
-function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin'}[r]||r; }
+function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin',istehsalat:'İstehsalat'}[r]||r; }
 
 async function seedUsers(){
   const defs = [
@@ -140,6 +140,10 @@ async function doLogin(){
   if(roles.includes('korporativ')){
     sessionStorage.setItem('korpcu', JSON.stringify({username:u, name:d.name}));
     location.href = 'korporativ.html'; return;
+  }
+  if(roles.includes('istehsalat')){
+    sessionStorage.setItem('istehcu', JSON.stringify({username:u, name:d.name}));
+    location.href = 'istehsalat.html'; return;
   }
   currentUser = {username:u, roles, mode:roles[0], name:d.name};
   localStorage.setItem('cu', JSON.stringify(currentUser));
@@ -182,7 +186,7 @@ function switchMode(r){
 function setupNav(){
   let tabs = [];
   if(currentUser.mode==='sifarisci') tabs=[['add','Qaimə Əlavə Et'],['mine','Mənim Qaimlərim'],['stats','Analitika']];
-  if(currentUser.mode==='anbar') tabs=[['list','Qaimlər'],['stats','Analitika']];
+  if(currentUser.mode==='anbar') tabs=[['list','Qaimlər'],['istehsalat','İstehsalat'],['stats','Analitika']];
   curNav = tabs[0][0];
   const el = document.getElementById('navTabs');
   el.innerHTML = tabs.map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
@@ -221,7 +225,8 @@ function render(){
     else if(curNav==='mine') m.innerHTML = viewMine();
     else m.innerHTML = viewStats();
   } else {
-    if(curNav==='list') m.innerHTML = viewAnbarList();
+    if(curNav==='list') m.innerHTML = viewAnbarList('sifaris');
+    else if(curNav==='istehsalat') m.innerHTML = viewAnbarList('istehsalat');
     else m.innerHTML = viewStats();
   }
   if(afId){ const el=document.getElementById(afId); if(el && el.focus){ el.focus(); if(afStart!=null && el.setSelectionRange) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
@@ -357,26 +362,32 @@ function viewMine(){
   return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})</h3>${listHead()}${mine.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}</div>`;
 }
 
-function viewAnbarList(){
-  const problemCount = qaimeler.filter(q=>hasOpenProblem(q)).length;
+function viewAnbarList(src){
+  src = src || 'sifaris';
+  const scoped = qaimeler.filter(q=> src==='istehsalat' ? q.qType==='istehsalat' : q.qType!=='istehsalat');
+  const problemCount = scoped.filter(q=>hasOpenProblem(q)).length;
   const tabs = [['aktiv','Mədaxil olunmayanlar'],['islemede','İşləyirəm'],['medaxil','Mədaxil Olan'],['tecili','Təcili'],['problemli','Problemli']];
-  let list = filterByTab(curTab);
+  let list = filterByTab(curTab, src);
   const search = document.getElementById('anbarSearch')?.value || '';
   if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
+  const title = src==='istehsalat' ? 'İstehsalat Qaimləri' : 'Qaimlər';
   return `<div class="card">
+    <h3>${title}</h3>
     <input id="anbarSearch" placeholder="Axtar (qaimə № / anbar)" value="${search}" oninput="render()">
     <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="curTab='${t[0]}';render()">${t[1]}${t[0]==='problemli'&&problemCount?` <span class="badge">${problemCount}</span>`:''}</button>`).join('')}</div>
     ${curTab==='aktiv'?`<button onclick="bulkTake()">İşlə (seçilənlər: ${selected.size})</button>`:''}
     <div style="margin-top:10px">${listHead()}${list.map(q=>rowHtml(q,true)).join('') || '<div class="small">Yoxdur</div>'}</div>
   </div>`;
 }
-function filterByTab(tab){
-  if(tab==='medaxil') return qaimeler.filter(q=>q.status==='medaxil');
-  if(tab==='problemli') return qaimeler.filter(q=>hasOpenProblem(q));
-  if(tab==='tecili') return qaimeler.filter(q=>isTecili(q) && q.status!=='medaxil' && !hasOpenProblem(q));
-  if(tab==='islemede') return qaimeler.filter(q=>q.status==='islemede' && q.isleyen===currentUser.name && !hasOpenProblem(q));
-  return qaimeler.filter(q=>q.status==='yeni' && !hasOpenProblem(q));
+function filterByTab(tab, src){
+  src = src || 'sifaris';
+  let list = qaimeler.filter(q=> src==='istehsalat' ? q.qType==='istehsalat' : q.qType!=='istehsalat');
+  if(tab==='medaxil') return list.filter(q=>q.status==='medaxil');
+  if(tab==='problemli') return list.filter(q=>hasOpenProblem(q));
+  if(tab==='tecili') return list.filter(q=>isTecili(q) && q.status!=='medaxil' && !hasOpenProblem(q));
+  if(tab==='islemede') return list.filter(q=>q.status==='islemede' && q.isleyen===currentUser.name && !hasOpenProblem(q));
+  return list.filter(q=>q.status==='yeni' && !hasOpenProblem(q));
 }
 
 function listHead(){
