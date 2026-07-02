@@ -141,7 +141,7 @@ function rowHtml(q){
       <div>Tarix: ${fmtDate(q.createdAt)}</div>
       <div>Sifarişçi: ${q.sifarisVeren}</div>
       <div>Kim işlədi: ${q.isleyen||'—'}</div>
-      <button class="danger" style="margin-top:6px" onclick="openProblemModal('${q.id}')">Problem bildir</button>
+      ${(q.korpMessages && q.korpMessages.length) ? '<div class="small">Problem bildirilib</div>' : `<button class="danger" style="margin-top:6px" onclick="openProblemModal('${q.id}')">Problem bildir</button>`}
     </div>
   </div>`;
 }
@@ -166,8 +166,10 @@ async function sendProblem(id){
   const text = document.getElementById('pmText').value.trim();
   const err = document.getElementById('pmErr');
   if(!ad || !text){ err.innerText='Ad və problem mütləqdir'; return; }
+  const q = qaimeler.find(x=>x.id===id);
+  if(q.korpMessages && q.korpMessages.length){ err.innerText='Bu qaimə üçün artıq problem bildirilib'; return; }
   await db.collection('qaimeler').doc(id).update({
-    korpMessages: firebase.firestore.FieldValue.arrayUnion({ad, text, createdAt:new Date().toISOString()})
+    korpMessages: firebase.firestore.FieldValue.arrayUnion({ad, text, solved:false, createdAt:new Date().toISOString()})
   });
   closeModal();
 }
