@@ -71,14 +71,14 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const ALL_ROLES = ['sifarisci','anbar','korporativ'];
+const ALL_ROLES = ['sifarisci','anbar','korporativ','istehsalat'];
 
 let currentUser = JSON.parse(sessionStorage.getItem('admincu')||'null');
 let qaimeler = [];
 let users = [];
 let curNav = 'users';
 
-function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin'}[r]||r; }
+function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin',istehsalat:'İstehsalat'}[r]||r; }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
@@ -216,7 +216,7 @@ function viewQaimeler(){
   if(search) list = list.filter(q=> String(q.no).includes(search) || (q.sifarisVeren||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
   const rows = list.map(q=>`<div class="row ${isTecili(q)?'tecili':''}">
     <div class="line-grid">
-      <span><b>Qaimə_${q.no}</b><br><span class="small">${fmtDate(q.createdAt)}</span></span>
+      <span><b>Qaimə_${q.no}</b>${q.qType==='istehsalat'?' <span class="chip">İstehsalat</span>':''}<br><span class="small">${fmtDate(q.createdAt)}</span></span>
       <span>${q.sifarisVeren}</span>
       <span>${q.anbar}</span>
       <span>${q.kimUcun}</span>
