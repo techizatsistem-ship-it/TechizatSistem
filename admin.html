@@ -71,7 +71,7 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const ALL_ROLES = ['sifarisci','anbar'];
+const ALL_ROLES = ['sifarisci','anbar','korporativ'];
 
 let currentUser = JSON.parse(sessionStorage.getItem('admincu')||'null');
 let qaimeler = [];
