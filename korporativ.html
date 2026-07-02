@@ -17,6 +17,9 @@ label{font-size:13px;color:#555;margin-top:8px;display:block}
 .hidden{display:none!important}
 #loginBox{max-width:320px;margin:80px auto;background:#fff;padding:20px;border-radius:8px}
 header{background:#1e293b;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+header .tabs{display:flex;gap:6px;flex-wrap:wrap}
+header .tabs button{background:#334155;padding:6px 10px}
+header .tabs button.active{background:#2563eb}
 #userInfo{font-size:13px}
 main{padding:12px;max-width:900px;margin:0 auto}
 .card{background:#fff;padding:14px;border-radius:8px;margin-bottom:12px}
@@ -42,7 +45,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 <div id="loginBox">
   <h3>Korporativ Giriş</h3>
   <label>İstifadəçi adı</label>
-  <input id="loginUser" value="ilyas">
+  <input id="loginUser">
   <label>Şifrə</label>
   <input id="loginPass" type="password">
   <button style="margin-top:12px;width:100%" onclick="doLogin()">Daxil ol</button>
@@ -51,7 +54,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 
 <div id="app" class="hidden">
 <header>
-  <h3 style="margin:0">Mədaxil Olunmuş Qaimlər</h3>
+  <div class="tabs" id="navTabs"></div>
   <div id="userInfo"></div>
 </header>
 <main id="main"></main>
@@ -72,7 +75,9 @@ const db = firebase.firestore();
 
 let currentUser = JSON.parse(sessionStorage.getItem('korpcu')||'null');
 let qaimeler = [];
+let curNav = 'medaxil';
 
+function isIlyas(){ return currentUser && currentUser.username === 'ilyas'; }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
@@ -92,7 +97,7 @@ async function doLogin(){
   const snap = await db.collection('users').doc(u).get();
   const d = snap.exists ? snap.data() : null;
   const roles = d ? (d.roles || (d.role?[d.role]:[])) : [];
-  if(u !== 'ilyas' || !d || d.password !== p || !roles.includes('korporativ')){
+  if(!d || d.password !== p || !roles.includes('korporativ')){
     document.getElementById('loginErr').innerText = 'İstifadəçi adı və ya şifrə yanlışdır';
     return;
   }
@@ -109,33 +114,45 @@ function boot(){
   document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
   document.getElementById('userInfo').style.cursor='pointer';
   document.getElementById('userInfo').onclick = logout;
-  db.collection('qaimeler').where('status','==','medaxil').onSnapshot(snap=>{
+  document.getElementById('navTabs').innerHTML = [['medaxil','Mədaxil Olunub'],['islemede','İşlənilir']]
+    .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
+  db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    qaimeler.sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
     render();
   });
+  render();
 }
 if(currentUser) boot();
+
+function setNav(n){ curNav = n; render(); }
 
 function render(){
   const af = document.activeElement;
   const afId = af && af.id, afStart = af && af.selectionStart, afEnd = af && af.selectionEnd;
+  document.querySelectorAll('#navTabs button').forEach(b=>b.classList.toggle('active', b.dataset.n===curNav));
+  document.getElementById('main').innerHTML = curNav==='medaxil' ? viewMedaxil() : viewIslemede();
+  if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
+}
+
+function viewMedaxil(){
   const search = document.getElementById('korpSearch')?.value || '';
-  let list = qaimeler;
+  let list = qaimeler.filter(q=>q.status==='medaxil');
   if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
-  document.getElementById('main').innerHTML = `<div class="card">
+  list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+  return `<div class="card">
+    <h3>Mədaxil Olunmuş Qaimlər</h3>
     <input id="korpSearch" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
     <div class="line-grid small" style="font-weight:bold;padding:4px 8px;margin-top:10px">
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Mədaxil №</span>
     </div>
     ${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}
   </div>`;
-  if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
 }
 function rowHtml(q){
+  const ilyasMode = isIlyas();
   const orig = q.photos||[];
   const med = q.medaxilPhotos||[];
-  const origThumb = orig[0] ? `<span><span class="small">Sifariş:</span> <img class="thumb" src="${orig[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(orig).replace(/"/g,'&quot;')},0)"></span>` : '';
+  const origThumb = (ilyasMode && orig[0]) ? `<span><span class="small">Sifariş:</span> <img class="thumb" src="${orig[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(orig).replace(/"/g,'&quot;')},0)"></span>` : '';
   const medThumb = med[0] ? `<span><span class="small">Mədaxil:</span> <img class="thumb" src="${med[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(med).replace(/"/g,'&quot;')},0)"></span>` : '<span class="small">mədaxil şəkli yoxdur</span>';
   const checked = q.korpChecked===true;
   return `<div class="row ${isTecili(q)?'tecili':''} ${checked?'checked':''}">
@@ -158,9 +175,9 @@ function rowHtml(q){
       <div>Kim işlədi: ${q.isleyen||'—'}</div>
       <div>Mədaxil №: ${q.medaxilNo||'—'}</div>
       ${(q.korpMessages && q.korpMessages.length) ? '<div class="small">Problem bildirilib</div>' : `<button class="danger" style="margin-top:6px" onclick="openProblemModal('${q.id}')">Problem bildir</button>`}
-      <label style="display:flex;align-items:center;gap:6px;width:auto;margin-top:8px">
+      ${ilyasMode ? `<label style="display:flex;align-items:center;gap:6px;width:auto;margin-top:8px">
         <input type="checkbox" style="width:auto" ${checked?'checked':''} onchange="toggleChecked('${q.id}',this.checked)"> Yoxlanıldı (bu qaimə şirkət sistemində yoxlanılıb)
-      </label>
+      </label>` : ''}
     </div>
   </div>`;
 }
@@ -168,6 +185,32 @@ async function toggleChecked(id, val){
   await db.collection('qaimeler').doc(id).update({korpChecked: val});
 }
 function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
+
+function viewIslemede(){
+  const search = document.getElementById('korpSearch2')?.value || '';
+  let list = qaimeler.filter(q=>q.status==='islemede');
+  if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
+  list = list.slice().sort((a,b)=> (b.tookAt?.toMillis?.()||0)-(a.tookAt?.toMillis?.()||0));
+  return `<div class="card">
+    <h3>İşlənilir</h3>
+    <input id="korpSearch2" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
+    <div class="line-grid small" style="font-weight:bold;padding:4px 8px;margin-top:10px">
+      <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Tarix</span>
+    </div>
+    ${list.map(q=>rowIslemede(q)).join('') || '<div class="small">Yoxdur</div>'}
+  </div>`;
+}
+function rowIslemede(q){
+  return `<div class="row ${isTecili(q)?'tecili':''}">
+    <div class="line-grid">
+      <span><b>Qaimə_${q.no}</b></span>
+      <span>${q.anbar}</span>
+      <span>${q.kimUcun}</span>
+      <span>${q.isleyen||''}</span>
+      <span class="small">${fmtDate(q.createdAt)}</span>
+    </div>
+  </div>`;
+}
 
 function openProblemModal(id){
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
