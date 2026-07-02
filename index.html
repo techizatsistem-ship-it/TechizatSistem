@@ -293,9 +293,9 @@ function drawWatermark(ctx, w, lines){
   ctx.font = `bold ${fs}px Arial`;
   ctx.textBaseline = 'top';
   ctx.lineWidth = fs*0.15;
-  ctx.strokeStyle = 'rgba(255,255,255,.85)';
+  ctx.strokeStyle = 'rgba(255,255,255,.35)';
   ctx.fillStyle = '#000';
-  ctx.globalAlpha = 0.5;
+  ctx.globalAlpha = 0.2;
   lines.forEach((t,i)=>{ const y=6+i*(fs+4); ctx.strokeText(t,6,y); ctx.fillText(t,6,y); });
   ctx.globalAlpha = 1;
 }
