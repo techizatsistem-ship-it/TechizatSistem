@@ -76,6 +76,14 @@ function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Dat
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
 function dlUrl(u){ return u.replace('/upload/','/upload/fl_attachment/'); }
+function printImage(url){
+  let f = document.getElementById('printFrame');
+  if(!f){ f = document.createElement('iframe'); f.id='printFrame'; f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f); }
+  const doc = f.contentWindow.document;
+  doc.open();
+  doc.write(`<html><body style="margin:0"><img src="${url}" style="width:100%" onload="setTimeout(()=>{window.focus();window.print();},200)"></body></html>`);
+  doc.close();
+}
 
 async function doLogin(){
   const u = document.getElementById('loginUser').value.trim();
@@ -184,10 +192,12 @@ function openViewer(photos, idx){
       <span id="vCount" style="color:#fff;align-self:center"></span>
       <button id="vNext">▶</button>
       <button id="vRotate">⟳ Döndər</button>
+      <button id="vPrint">🖨 Çap et</button>
       <a id="vDl"><button>Yüklə</button></a>
     </div>
     <div id="vWrap" style="flex:1;overflow:hidden;display:flex;touch-action:none"><img id="vImg" style="max-width:100%;max-height:80vh;margin:auto"></div>
   </div>`;
+  document.getElementById('vPrint').onclick = ()=> printImage(photos[idx]);
   const img = document.getElementById('vImg');
   function update(){
     img.src = photos[idx];
