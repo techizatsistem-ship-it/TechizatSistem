@@ -44,9 +44,9 @@ td,th{border:1px solid #ddd;padding:6px;text-align:left}
 <div id="loginBox">
   <h3>Admin Giriş</h3>
   <label>İstifadəçi adı</label>
-  <input id="loginUser" value="admin">
+  <input id="loginUser" value="admin" onkeydown="if(event.key==='Enter') doLogin()">
   <label>Şifrə</label>
-  <input id="loginPass" type="password">
+  <input id="loginPass" type="password" onkeydown="if(event.key==='Enter') doLogin()">
   <button style="margin-top:12px;width:100%" onclick="doLogin()">Daxil ol</button>
   <div id="loginErr" class="small" style="color:red"></div>
 </div>
@@ -100,7 +100,7 @@ async function doLogin(){
   sessionStorage.setItem('admincu', JSON.stringify(currentUser));
   boot();
 }
-function logout(){ sessionStorage.removeItem('admincu'); location.reload(); }
+function logout(){ sessionStorage.removeItem('admincu'); location.href = 'index.html'; }
 
 function boot(){
   if(!currentUser) return;
