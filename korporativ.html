@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Korporativ — Qaimə Sistemi</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;background:#f2f2f2;color:#222}
+input,select,textarea,button{font-size:15px;padding:8px;border:1px solid #ccc;border-radius:5px;width:100%;margin-top:4px}
+button{background:#2563eb;color:#fff;border:none;cursor:pointer;width:auto;padding:8px 14px}
+button.sec{background:#666}
+button.danger{background:#c0392b}
+label{font-size:13px;color:#555;margin-top:8px;display:block}
+.hidden{display:none!important}
+#loginBox{max-width:320px;margin:80px auto;background:#fff;padding:20px;border-radius:8px}
+header{background:#1e293b;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+#userInfo{font-size:13px}
+main{padding:12px;max-width:900px;margin:0 auto}
+.card{background:#fff;padding:14px;border-radius:8px;margin-bottom:12px}
+.row{border:1px solid #ddd;border-radius:6px;margin-bottom:6px;padding:8px;background:#fff}
+.row.tecili{border:2px solid #c0392b}
+.line{cursor:pointer;font-size:14px}
+.line-grid{display:grid;grid-template-columns:90px 1fr 1fr 1fr 80px;gap:8px;align-items:center}
+.line-extras{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
+.details{margin-top:8px;font-size:13px;color:#444;border-top:1px solid #eee;padding-top:8px}
+.thumb{width:50px;height:50px;object-fit:cover;border-radius:4px;cursor:pointer}
+.small{font-size:12px;color:#666}
+.badge{background:#c0392b;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px}
+.modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:50;padding:10px}
+.modal .box{background:#fff;padding:16px;border-radius:8px;max-width:420px;width:100%;max-height:90vh;overflow:auto}
+#viewerModal{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;z-index:60}
+#viewerModal img{max-width:100%;max-height:80vh;margin:auto}
+#viewerModal .bar{display:flex;gap:8px;padding:10px;justify-content:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<div id="loginBox">
+  <h3>Korporativ Giriş</h3>
+  <label>İstifadəçi adı</label>
+  <input id="loginUser" value="korporativ">
+  <label>Şifrə</label>
+  <input id="loginPass" type="password">
+  <button style="margin-top:12px;width:100%" onclick="doLogin()">Daxil ol</button>
+  <div id="loginErr" class="small" style="color:red"></div>
+</div>
+
+<div id="app" class="hidden">
+<header>
+  <h3 style="margin:0">Mədaxil Olunmuş Qaimlər</h3>
+  <div id="userInfo"></div>
+</header>
+<main id="main"></main>
+</div>
+<div id="modalRoot"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyD-w-HjawIvU8u7QvpjEhlgq2K2QXzs4bM",
+  authDomain: "techizat-8f0bc.firebaseapp.com",
+  projectId: "techizat-8f0bc",
+  storageBucket: "techizat-8f0bc.firebasestorage.app",
+  messagingSenderId: "74888831335",
+  appId: "1:74888831335:web:5257610bfa03ab67b14fc2"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let currentUser = JSON.parse(sessionStorage.getItem('korpcu')||'null');
+let qaimeler = [];
+
+function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
+function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
+function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
+function dlUrl(u){ return u.replace('/upload/','/upload/fl_attachment/'); }
+
+async function doLogin(){
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value.trim();
+  const snap = await db.collection('users').doc(u).get();
+  const d = snap.exists ? snap.data() : null;
+  const roles = d ? (d.roles || (d.role?[d.role]:[])) : [];
+  if(!d || d.password !== p || !roles.includes('korporativ')){
+    document.getElementById('loginErr').innerText = 'İstifadəçi adı və ya şifrə yanlışdır';
+    return;
+  }
+  currentUser = {username:u, name:d.name};
+  sessionStorage.setItem('korpcu', JSON.stringify(currentUser));
+  boot();
+}
+function logout(){ sessionStorage.removeItem('korpcu'); location.reload(); }
+
+function boot(){
+  if(!currentUser) return;
+  document.getElementById('loginBox').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
+  document.getElementById('userInfo').style.cursor='pointer';
+  document.getElementById('userInfo').onclick = logout;
+  db.collection('qaimeler').where('status','==','medaxil').onSnapshot(snap=>{
+    qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    qaimeler.sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+    render();
+  });
+}
+if(currentUser) boot();
+
+function render(){
+  const af = document.activeElement;
+  const afId = af && af.id, afStart = af && af.selectionStart, afEnd = af && af.selectionEnd;
+  const search = document.getElementById('korpSearch')?.value || '';
+  let list = qaimeler;
+  if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
+  document.getElementById('main').innerHTML = `<div class="card">
+    <input id="korpSearch" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
+    <div class="line-grid small" style="font-weight:bold;padding:4px 8px;margin-top:10px">
+      <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Mədaxil №</span>
+    </div>
+    ${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}
+  </div>`;
+  if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
+}
+function rowHtml(q){
+  const photos = q.medaxilPhotos||[];
+  const thumb = photos[0] ? `<img class="thumb" src="${photos[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(photos).replace(/"/g,'&quot;')},0)">` : '<span class="small">şəkil yoxdur</span>';
+  return `<div class="row ${isTecili(q)?'tecili':''}">
+    <div class="line" onclick="toggleDetails('${q.id}')">
+      <div class="line-grid">
+        <span><b>Qaimə_${q.no}</b></span>
+        <span>${q.anbar}</span>
+        <span>${q.kimUcun}</span>
+        <span>${q.isleyen||''}</span>
+        <span>${q.medaxilNo||''}</span>
+      </div>
+      <div class="line-extras">${thumb}</div>
+    </div>
+    <div class="details hidden" id="det_${q.id}">
+      <div>Tarix: ${fmtDate(q.createdAt)}</div>
+      <div>Sifarişçi: ${q.sifarisVeren}</div>
+      <div>Kim işlədi: ${q.isleyen||'—'}</div>
+      <button class="danger" style="margin-top:6px" onclick="openProblemModal('${q.id}')">Problem bildir</button>
+    </div>
+  </div>`;
+}
+function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
+
+function openProblemModal(id){
+  document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
+    <h3>Problem bildir</h3>
+    <label>Ad *</label>
+    <input id="pmAd">
+    <label>Problem *</label>
+    <textarea id="pmText" rows="3"></textarea>
+    <div id="pmErr" class="small" style="color:red"></div>
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button class="sec" onclick="closeModal()">Ləğv et</button>
+      <button onclick="sendProblem('${id}')">Göndər</button>
+    </div>
+  </div></div>`;
+}
+async function sendProblem(id){
+  const ad = document.getElementById('pmAd').value.trim();
+  const text = document.getElementById('pmText').value.trim();
+  const err = document.getElementById('pmErr');
+  if(!ad || !text){ err.innerText='Ad və problem mütləqdir'; return; }
+  await db.collection('qaimeler').doc(id).update({
+    korpMessages: firebase.firestore.FieldValue.arrayUnion({ad, text, createdAt:new Date().toISOString()})
+  });
+  closeModal();
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+
+// ---------- FOTO BAXICI (scroll/pinch ilə yaxınlaşdırma) ----------
+function openViewer(photos, idx){
+  let rotate=0, scale=1, pinchDist=null;
+  document.getElementById('modalRoot').innerHTML = `<div id="viewerModal">
+    <div class="bar">
+      <button class="sec" onclick="closeModal()">Bağla</button>
+      <button id="vPrev">◀</button>
+      <span id="vCount" style="color:#fff;align-self:center"></span>
+      <button id="vNext">▶</button>
+      <button id="vRotate">⟳ Döndər</button>
+      <a id="vDl"><button>Yüklə</button></a>
+    </div>
+    <div id="vWrap" style="flex:1;overflow:hidden;display:flex;touch-action:none"><img id="vImg" style="max-width:100%;max-height:80vh;margin:auto"></div>
+  </div>`;
+  const img = document.getElementById('vImg');
+  function update(){
+    img.src = photos[idx];
+    img.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+    document.getElementById('vCount').innerText = (idx+1)+'/'+photos.length;
+    document.getElementById('vDl').href = dlUrl(photos[idx]);
+  }
+  document.getElementById('vPrev').onclick=()=>{ idx=(idx-1+photos.length)%photos.length; rotate=0;scale=1; update(); };
+  document.getElementById('vNext').onclick=()=>{ idx=(idx+1)%photos.length; rotate=0;scale=1; update(); };
+  document.getElementById('vRotate').onclick=()=>{ rotate=(rotate+90)%360; update(); };
+  const wrap = document.getElementById('vWrap');
+  wrap.addEventListener('wheel', e=>{ e.preventDefault(); scale=Math.max(0.5,Math.min(5,scale+(e.deltaY<0?0.15:-0.15))); img.style.transform=`rotate(${rotate}deg) scale(${scale})`; }, {passive:false});
+  wrap.addEventListener('touchmove', e=>{
+    if(e.touches.length===2){
+      e.preventDefault();
+      const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+      const dist=Math.hypot(dx,dy);
+      if(pinchDist!=null){ scale=Math.max(0.5,Math.min(5,scale*(dist/pinchDist))); img.style.transform=`rotate(${rotate}deg) scale(${scale})`; }
+      pinchDist=dist;
+    }
+  }, {passive:false});
+  wrap.addEventListener('touchend', ()=>{ pinchDist=null; });
+  update();
+}
+</script>
+</body>
+</html>
