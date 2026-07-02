@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Panel — Qaimə Sistemi</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;background:#f2f2f2;color:#222}
+input,select,textarea,button{font-size:15px;padding:8px;border:1px solid #ccc;border-radius:5px;width:100%;margin-top:4px}
+button{background:#2563eb;color:#fff;border:none;cursor:pointer;width:auto;padding:8px 14px}
+button.sec{background:#666}
+button.danger{background:#c0392b}
+label{font-size:13px;color:#555;margin-top:8px;display:block}
+.hidden{display:none!important}
+#loginBox{max-width:320px;margin:80px auto;background:#fff;padding:20px;border-radius:8px}
+header{background:#1e293b;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+header .tabs{display:flex;gap:6px;flex-wrap:wrap}
+header .tabs button{background:#334155;padding:6px 10px}
+header .tabs button.active{background:#2563eb}
+#userInfo{font-size:13px}
+main{padding:12px;max-width:900px;margin:0 auto}
+.card{background:#fff;padding:14px;border-radius:8px;margin-bottom:12px}
+.row{border:1px solid #ddd;border-radius:6px;margin-bottom:6px;padding:8px;background:#fff;cursor:pointer}
+.row.tecili{border:2px solid #c0392b}
+.line-grid{display:grid;grid-template-columns:110px 1fr 1fr 1fr 80px 90px;gap:8px;align-items:center;font-size:14px}
+.line-grid b{color:#2563eb}
+.small{font-size:12px;color:#666}
+.badge{background:#c0392b;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px}
+.modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:50;padding:10px}
+.modal .box{background:#fff;padding:16px;border-radius:8px;max-width:460px;width:100%;max-height:90vh;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{border:1px solid #ddd;padding:6px;text-align:left}
+.chip{display:inline-block;background:#e2e8f0;padding:2px 8px;border-radius:10px;font-size:12px;margin:2px}
+.roleChk{display:flex;gap:4px;align-items:center;width:auto;padding:4px 0}
+.roleChk input{width:auto;margin:0}
+.userRow{display:flex;justify-content:space-between;align-items:center;border:1px solid #ddd;border-radius:6px;padding:8px;margin-bottom:6px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="loginBox">
+  <h3>Admin Giriş</h3>
+  <label>İstifadəçi adı</label>
+  <input id="loginUser" value="admin">
+  <label>Şifrə</label>
+  <input id="loginPass" type="password">
+  <button style="margin-top:12px;width:100%" onclick="doLogin()">Daxil ol</button>
+  <div id="loginErr" class="small" style="color:red"></div>
+</div>
+
+<div id="app" class="hidden">
+<header>
+  <div class="tabs" id="navTabs"></div>
+  <div id="userInfo"></div>
+</header>
+<main id="main"></main>
+</div>
+<div id="modalRoot"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyD-w-HjawIvU8u7QvpjEhlgq2K2QXzs4bM",
+  authDomain: "techizat-8f0bc.firebaseapp.com",
+  projectId: "techizat-8f0bc",
+  storageBucket: "techizat-8f0bc.firebasestorage.app",
+  messagingSenderId: "74888831335",
+  appId: "1:74888831335:web:5257610bfa03ab67b14fc2"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const ALL_ROLES = ['sifarisci','anbar','korporativ'];
+
+let currentUser = JSON.parse(sessionStorage.getItem('admincu')||'null');
+let qaimeler = [];
+let users = [];
+let curNav = 'users';
+
+function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Anbar',korporativ:'Korporativ',admin:'Admin'}[r]||r; }
+function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
+function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
+function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
+function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
+function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
+function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':'Mədaxil edildi'); }
+
+async function doLogin(){
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value.trim();
+  const snap = await db.collection('users').doc(u).get();
+  const d = snap.exists ? snap.data() : null;
+  const roles = d ? (d.roles || (d.role?[d.role]:[])) : [];
+  if(!d || d.password !== p || !roles.includes('admin')){
+    document.getElementById('loginErr').innerText = 'Yalnız admin daxil ola bilər';
+    return;
+  }
+  currentUser = {username:u, name:d.name};
+  sessionStorage.setItem('admincu', JSON.stringify(currentUser));
+  boot();
+}
+function logout(){ sessionStorage.removeItem('admincu'); location.reload(); }
+
+function boot(){
+  if(!currentUser) return;
+  document.getElementById('loginBox').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
+  document.getElementById('userInfo').style.cursor='pointer';
+  document.getElementById('userInfo').onclick = logout;
+  document.getElementById('navTabs').innerHTML = [['users','İstifadəçilər'],['qaimeler','Qaimlər']]
+    .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
+  db.collection('users').onSnapshot(snap=>{ users = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
+  db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{ qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
+  render();
+}
+if(currentUser) boot();
+
+function setNav(n){ curNav=n; render(); }
+
+function render(){
+  const af = document.activeElement;
+  const afId = af && af.id, afStart = af && af.selectionStart, afEnd = af && af.selectionEnd;
+  document.querySelectorAll('#navTabs button').forEach(b=>b.classList.toggle('active', b.dataset.n===curNav));
+  document.getElementById('main').innerHTML = curNav==='users' ? viewUsers() : viewQaimeler();
+  if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
+}
+
+// ---------- İSTİFADƏÇİLƏR ----------
+function viewUsers(){
+  const rows = users.map(u=>{
+    const roles = u.roles || (u.role?[u.role]:[]);
+    return `<div class="userRow" onclick="openUserStats('${u.id}')">
+      <div><b>${u.name}</b> <span class="small">(${u.id})</span><br>${roles.map(r=>`<span class="chip">${roleLabel(r)}</span>`).join('')}</div>
+      <button class="sec" onclick="event.stopPropagation();openEditUser('${u.id}')">Redaktə</button>
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <h3>İstifadəçilər</h3>
+    <button onclick="openEditUser(null)">+ Yeni istifadəçi</button>
+    <div style="margin-top:10px">${rows || '<div class="small">Yoxdur</div>'}</div>
+  </div>`;
+}
+function openEditUser(id){
+  const u = id ? users.find(x=>x.id===id) : null;
+  const roles = u ? (u.roles||(u.role?[u.role]:[])) : [];
+  document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
+    <h3>${u?'İstifadəçini redaktə et':'Yeni istifadəçi'}</h3>
+    <label>İstifadəçi adı (login)</label>
+    <input id="u_id" value="${u?u.id:''}" ${u?'disabled':''}>
+    <label>Ad</label>
+    <input id="u_name" value="${u?u.name:''}">
+    <label>Şifrə ${u?'(dəyişmək istəmirsinizsə boş buraxın)':''}</label>
+    <input id="u_pass" type="text">
+    <label>Rollar</label>
+    ${ALL_ROLES.map(r=>`<label class="roleChk"><input type="checkbox" value="${r}" ${roles.includes(r)?'checked':''} class="rchk"> ${roleLabel(r)}</label>`).join('')}
+    <div id="u_err" class="small" style="color:red"></div>
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button class="sec" onclick="closeModal()">Ləğv et</button>
+      ${u?`<button class="danger" onclick="deleteUser('${u.id}')">Sil</button>`:''}
+      <button onclick="saveUser(${u?`'${u.id}'`:'null'})">Yadda saxla</button>
+    </div>
+  </div></div>`;
+}
+async function saveUser(existingId){
+  const id = existingId || document.getElementById('u_id').value.trim();
+  const name = document.getElementById('u_name').value.trim();
+  const pass = document.getElementById('u_pass').value.trim();
+  const roles = [...document.querySelectorAll('.rchk:checked')].map(c=>c.value);
+  const err = document.getElementById('u_err');
+  if(!id || !name || roles.length===0 || (!existingId && !pass)){ err.innerText='Bütün sahələr mütləqdir'; return; }
+  const data = {name, roles};
+  if(pass) data.password = pass;
+  await db.collection('users').doc(id).set(data, {merge:true});
+  closeModal();
+}
+async function deleteUser(id){
+  if(!confirm('İstifadəçi silinsin?')) return;
+  await db.collection('users').doc(id).delete();
+  closeModal();
+}
+function openUserStats(id){
+  const u = users.find(x=>x.id===id);
+  const roles = u.roles || (u.role?[u.role]:[]);
+  const weekAgo = Date.now()-7*86400000;
+  const monthAgo = Date.now()-30*86400000;
+  const addedByName = qaimeler.filter(q=>q.sifarisVeren===u.name);
+  const workedByName = qaimeler.filter(q=>q.isleyen===u.name);
+  const addedToday = addedByName.filter(q=>isToday(q.createdAt)).length;
+  const addedMonth = addedByName.filter(q=>q.createdAt && (q.createdAt.toDate?q.createdAt.toDate():new Date(q.createdAt)).getTime()>monthAgo).length;
+  const medaxilToday = workedByName.filter(q=>q.status==='medaxil' && isToday(q.tookAt)).length;
+  const medaxilWeek = workedByName.filter(q=>q.status==='medaxil' && q.tookAt && (q.tookAt.toDate?q.tookAt.toDate():new Date(q.tookAt)).getTime()>weekAgo).length;
+  const active = workedByName.filter(q=>q.status==='islemede').length;
+  const tecili = [...addedByName, ...workedByName].filter(isTecili).length;
+  const problemli = [...addedByName, ...workedByName].filter(hasOpenProblem).length;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
+    <h3>${u.name} — Analitika</h3>
+    <div class="small" style="margin-bottom:6px">${roles.map(r=>`<span class="chip">${roleLabel(r)}</span>`).join('')}</div>
+    <table>
+      <tr><td>Bu gün əlavə etdiyi qaimə</td><td>${addedToday}</td></tr>
+      <tr><td>Son 30 gündə əlavə etdiyi</td><td>${addedMonth}</td></tr>
+      <tr><td>Hazırda üzərində işlədiyi</td><td>${active}</td></tr>
+      <tr><td>Bu gün mədaxil etdiyi</td><td>${medaxilToday}</td></tr>
+      <tr><td>Son 7 gündə mədaxil etdiyi</td><td>${medaxilWeek}</td></tr>
+      <tr><td>Təcili qaimələrdə iştirakı</td><td>${tecili}</td></tr>
+      <tr><td>Problemli qaimələrdə iştirakı</td><td>${problemli}</td></tr>
+    </table>
+    <button class="sec" style="margin-top:10px" onclick="closeModal()">Bağla</button>
+  </div></div>`;
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+
+// ---------- QAİMƏLƏR (tam siyahı, silmək mümkün) ----------
+function viewQaimeler(){
+  const search = document.getElementById('adminSearch')?.value || '';
+  let list = qaimeler;
+  if(search) list = list.filter(q=> String(q.no).includes(search) || (q.sifarisVeren||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
+  const rows = list.map(q=>`<div class="row ${isTecili(q)?'tecili':''}">
+    <div class="line-grid">
+      <span><b>Qaimə_${q.no}</b><br><span class="small">${fmtDate(q.createdAt)}</span></span>
+      <span>${q.sifarisVeren}</span>
+      <span>${q.anbar}</span>
+      <span>${q.kimUcun}</span>
+      <span>${statusLabel(q.status)}</span>
+      <button class="danger" onclick="event.stopPropagation();adminDeleteQ('${q.id}')">Sil</button>
+    </div>
+    ${hasOpenProblem(q)?'<span class="badge">Problem</span>':''}
+  </div>`).join('');
+  return `<div class="card">
+    <h3>Bütün Qaimlər (${list.length})</h3>
+    <input id="adminSearch" placeholder="Axtar (№ / sifarişçi / kim üçün)" value="${search}" oninput="render()">
+    <div style="margin-top:10px">${rows || '<div class="small">Yoxdur</div>'}</div>
+  </div>`;
+}
+async function adminDeleteQ(id){
+  if(!confirm('Bu qaimə tamamilə sistemdən silinsin? Bu əməliyyat geri qaytarılmır.')) return;
+  await db.collection('qaimeler').doc(id).delete();
+}
+</script>
+</body>
+</html>
