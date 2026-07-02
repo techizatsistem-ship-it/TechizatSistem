@@ -62,12 +62,12 @@ td,th{border:1px solid #ddd;padding:6px;text-align:left}
 
 <script>
 const firebaseConfig = {
-  apiKey: "AIzaSyD-w-HjawIvU8u7QvpjEhlgq2K2QXzs4bM",
-  authDomain: "techizat-8f0bc.firebaseapp.com",
-  projectId: "techizat-8f0bc",
-  storageBucket: "techizat-8f0bc.firebasestorage.app",
-  messagingSenderId: "74888831335",
-  appId: "1:74888831335:web:5257610bfa03ab67b14fc2"
+  apiKey: "AIzaSyDCy5J5pqsD7hLAjzS_MDTByS3avGeXKsE",
+  authDomain: "techizatsistemfirebase.firebaseapp.com",
+  projectId: "techizatsistemfirebase",
+  storageBucket: "techizatsistemfirebase.firebasestorage.app",
+  messagingSenderId: "257272547255",
+  appId: "1:257272547255:web:54a2c6e0d7d1a80baf0a32"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -127,7 +127,6 @@ function render(){
   if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
 }
 
-// ---------- İSTİFADƏÇİLƏR ----------
 function viewUsers(){
   const rows = users.map(u=>{
     const roles = u.roles || (u.role?[u.role]:[]);
@@ -211,7 +210,6 @@ function openUserStats(id){
 }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
 
-// ---------- QAİMƏLƏR (tam siyahı, silmək mümkün) ----------
 function viewQaimeler(){
   const search = document.getElementById('adminSearch')?.value || '';
   let list = qaimeler;
