@@ -326,7 +326,7 @@ async function submitQaime(){
   err.innerText = '';
   const btn = document.getElementById('submitBtn'); btn.disabled = true; btn.innerText = 'Göndərilir...';
   try{
-    const wm = [`Sifarişçi: ${currentUser.name}`, `Anbar: ${anbar}`, `Kim üçün: ${kim}`];
+    const wm = [`Sifarişçi: ${currentUser.name}`, `Anbar: ${anbar}`, `Kim üçün: ${kim}`, `Ödəniş: ${odenis}`];
     const photos = [];
     for(const p of pickedFiles){ const blob = await compressImage(p.file, 1200, 0.7, wm); photos.push(await uploadToCloudinary(blob)); }
     const no = await db.runTransaction(async t=>{
