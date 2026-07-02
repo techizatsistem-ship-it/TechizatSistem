@@ -205,7 +205,7 @@ function cleanupOld(){
     const t = q.createdAt.toMillis ? q.createdAt.toMillis() : new Date(q.createdAt).getTime();
     if(t < cutoff){
       cleanupDone.add(q.id);
-      db.collection('qaimeler').doc(q.id).delete().catch(()=>{});
+      deleteQaimePhotos(q).finally(()=> db.collection('qaimeler').doc(q.id).delete().catch(()=>{}));
     }
   });
 }
@@ -483,8 +483,25 @@ async function saveEdit(id){
   });
   closeModal();
 }
+const CL_API_KEY = '947222283424236', CL_API_SECRET = 'oDGIa0KI-R6KhOazJR7g5sWMzX0';
+async function sha1(str){ const b = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+function publicIdFromUrl(url){ const m = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+$/); return m?m[1]:null; }
+async function deleteFromCloudinary(url){
+  const pid = publicIdFromUrl(url); if(!pid) return;
+  const ts = Math.floor(Date.now()/1000);
+  const sig = await sha1(`public_id=${pid}&timestamp=${ts}${CL_API_SECRET}`);
+  const fd = new FormData();
+  fd.append('public_id', pid); fd.append('timestamp', ts); fd.append('api_key', CL_API_KEY); fd.append('signature', sig);
+  try{ await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/destroy`, {method:'POST', body:fd}); }catch(e){ console.error(e); }
+}
+async function deleteQaimePhotos(q){
+  const all = [...(q.photos||[]), ...(q.medaxilPhotos||[])];
+  await Promise.all(all.map(deleteFromCloudinary));
+}
 async function deleteQaime(id){
   if(!confirm('Qaimə silinsin?')) return;
+  const q = qaimeler.find(x=>x.id===id);
+  if(q) await deleteQaimePhotos(q);
   await db.collection('qaimeler').doc(id).delete();
 }
 function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
