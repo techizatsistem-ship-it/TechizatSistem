@@ -59,9 +59,9 @@ td,th{border:1px solid #ddd;padding:6px;text-align:left}
 <div id="loginBox">
   <h3>Giriş</h3>
   <label>İstifadəçi adı</label>
-  <input id="loginUser">
+  <input id="loginUser" onkeydown="if(event.key==='Enter') doLogin()">
   <label>Şifrə</label>
-  <input id="loginPass" type="password">
+  <input id="loginPass" type="password" onkeydown="if(event.key==='Enter') doLogin()">
   <button style="margin-top:12px;width:100%" onclick="doLogin()">Daxil ol</button>
   <div id="loginErr" class="small" style="color:red"></div>
 </div>
@@ -102,6 +102,7 @@ let curTab = 'aktiv';
 let curNav = null;
 let selected = new Set();
 let dismissed = new Set();
+let pendingNotifIds = [];
 let pickedFiles = [];
 let medPicked = [];
 
@@ -726,12 +727,18 @@ async function resolveMessage(qid, idx){
 function checkNotifications(){
   const mine = qaimeler.filter(q=>hasOpenProblem(q) && q.sifarisVeren===currentUser.name && !dismissed.has(q.id));
   if(mine.length>0 && !document.getElementById('modalRoot').innerHTML){
+    pendingNotifIds = mine.map(q=>q.id);
     document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
       <h3>Problemli qaimələr (${mine.length})</h3>
       ${mine.map(q=>`<div class="row" onclick="openResolveModal('${q.id}')" style="cursor:pointer"><b>Qaimə_${q.no}</b> — ${q.problem.text}</div>`).join('')}
-      <button class="sec" style="margin-top:10px" onclick="mine.forEach(m=>dismissed.add(m.id));closeModal()">Bağla</button>
+      <button class="sec" style="margin-top:10px" onclick="dismissNotifications()">Bağla</button>
     </div></div>`;
   }
+}
+function dismissNotifications(){
+  pendingNotifIds.forEach(id=>dismissed.add(id));
+  pendingNotifIds = [];
+  closeModal();
 }
 
 function viewStats(){
