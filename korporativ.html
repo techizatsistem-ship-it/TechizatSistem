@@ -81,7 +81,7 @@ function printImage(url){
   if(!f){ f = document.createElement('iframe'); f.id='printFrame'; f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f); }
   const doc = f.contentWindow.document;
   doc.open();
-  doc.write(`<html><body style="margin:0"><img src="${url}" style="width:100%" onload="setTimeout(()=>{window.focus();window.print();},200)"></body></html>`);
+  doc.write(`<html><head><style>@page{margin:0}html,body{margin:0;height:100%}body{display:flex;align-items:center;justify-content:center}img{max-width:100vw;max-height:100vh;object-fit:contain}</style></head><body><img src="${url}" onload="setTimeout(()=>{window.focus();window.print();},200)"></body></html>`);
   doc.close();
 }
 
