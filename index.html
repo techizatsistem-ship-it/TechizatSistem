@@ -110,7 +110,7 @@ function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',
 async function seedUsers(){
   const defs = [
     {id:'sifaris', password:'1234', roles:['sifarisci'], name:'Sifarişçi'},
-    {id:'sistem', password:'1234', roles:['anbar'], name:'Anbar İşçisi'},
+    {id:'sistem', password:'1234', roles:['anbar'], name:'Sistem İşçisi'},
     {id:'korporativ', password:'1234', roles:['korporativ'], name:'Korporativ'},
     {id:'admin', password:'adminadmin', roles:['admin'], name:'Admin'}
   ];
@@ -269,7 +269,7 @@ function renderPreview(){
     `<div style="position:relative"><img src="${p.url}"><button onclick="pickedFiles.splice(${i},1);renderPreview()" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;padding:0;border-radius:50%;background:#c0392b">×</button></div>`
   ).join('');
 }
-function compressImage(file, maxSize=1200, quality=0.7){
+function compressImage(file, maxSize=1200, quality=0.7, wmLines=null){
   return new Promise(resolve=>{
     const reader = new FileReader();
     reader.onload = e=>{
@@ -278,13 +278,34 @@ function compressImage(file, maxSize=1200, quality=0.7){
         let w=img.width, h=img.height;
         if(w>h){ if(w>maxSize){h=h*maxSize/w; w=maxSize;} } else { if(h>maxSize){w=w*maxSize/h; h=maxSize;} }
         const c = document.createElement('canvas'); c.width=w; c.height=h;
-        c.getContext('2d').drawImage(img,0,0,w,h);
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        if(wmLines) drawWatermark(ctx, w, wmLines);
         c.toBlob(b=>resolve(b), 'image/jpeg', quality);
       };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   });
+}
+function drawWatermark(ctx, w, lines){
+  const fs = Math.max(12, w*0.032);
+  ctx.font = `bold ${fs}px Arial`;
+  ctx.textBaseline = 'top';
+  ctx.lineWidth = fs*0.15;
+  ctx.strokeStyle = 'rgba(255,255,255,.85)';
+  ctx.fillStyle = '#000';
+  ctx.globalAlpha = 0.5;
+  lines.forEach((t,i)=>{ const y=6+i*(fs+4); ctx.strokeText(t,6,y); ctx.fillText(t,6,y); });
+  ctx.globalAlpha = 1;
+}
+function printImage(url){
+  let f = document.getElementById('printFrame');
+  if(!f){ f = document.createElement('iframe'); f.id='printFrame'; f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f); }
+  const doc = f.contentWindow.document;
+  doc.open();
+  doc.write(`<html><body style="margin:0"><img src="${url}" style="width:100%" onload="setTimeout(()=>{window.focus();window.print();},200)"></body></html>`);
+  doc.close();
 }
 async function uploadToCloudinary(blob){
   const fd = new FormData();
@@ -318,8 +339,9 @@ async function submitQaime(){
   });
   curNav='mine'; render();
   if(files.length){
+    const wm = [`Sifarişçi: ${currentUser.name}`, `Anbar: ${anbar}`, `Kim üçün: ${kim}`];
     const photos = [];
-    for(const p of files){ const blob = await compressImage(p.file); photos.push(await uploadToCloudinary(blob)); }
+    for(const p of files){ const blob = await compressImage(p.file, 1200, 0.7, wm); photos.push(await uploadToCloudinary(blob)); }
     await docRef.update({photos, photosUploading:false});
   }
 }
@@ -405,6 +427,7 @@ function anbarActions(q){
     html += `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
       <button class="danger" onclick="openProblemModal('${q.id}')">Problem bildir</button>
       <button onclick="openMedaxilModal('${q.id}')">Mədaxil edildi</button>
+      <button class="sec" onclick="imtinaEt('${q.id}')">İmtina et</button>
     </div>`;
   }
   return html;
@@ -422,6 +445,12 @@ function sifarisciActions(q){
     </div>`;
   }
   return html;
+}
+async function imtinaEt(id){
+  if(!confirm('Bu qaimədən imtina edilsin?')) return;
+  await db.collection('qaimeler').doc(id).update({status:'yeni', isleyen:null, tookAt:null});
+  curTab = 'aktiv';
+  render();
 }
 function openEditModal(id){
   const q = qaimeler.find(x=>x.id===id);
@@ -476,12 +505,14 @@ function openViewer(photos, idx){
       <span id="vCount" style="color:#fff;align-self:center"></span>
       <button id="vNext">▶</button>
       <button id="vRotate">⟳ Döndər</button>
+      <button id="vPrint">🖨 Çap et</button>
       <a id="vDl"><button>Yüklə</button></a>
     </div>
     <div id="vWrap" style="flex:1;overflow:hidden;display:flex;touch-action:none">
       <img id="vImg" style="max-width:100%;max-height:80vh;margin:auto">
     </div>
   </div>`;
+  document.getElementById('vPrint').onclick = ()=> printImage(photos[idx]);
   const img = document.getElementById('vImg');
   function update(){
     img.src = photos[idx];
