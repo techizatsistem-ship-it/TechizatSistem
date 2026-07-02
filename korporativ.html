@@ -81,6 +81,7 @@ function isIlyas(){ return currentUser && currentUser.username === 'ilyas'; }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
+function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':'Mədaxil edildi'); }
 function dlUrl(u){ return u.replace('/upload/','/upload/fl_attachment/'); }
 function printImage(url){
   let f = document.getElementById('printFrame');
@@ -114,7 +115,7 @@ function boot(){
   document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
   document.getElementById('userInfo').style.cursor='pointer';
   document.getElementById('userInfo').onclick = logout;
-  document.getElementById('navTabs').innerHTML = [['medaxil','Mədaxil Olunub'],['islemede','İşlənilir']]
+  document.getElementById('navTabs').innerHTML = [['medaxil','Mədaxil Olunub'],['islemede','İşlənilir'],['istehsalat','İstehsalat']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
@@ -130,13 +131,13 @@ function render(){
   const af = document.activeElement;
   const afId = af && af.id, afStart = af && af.selectionStart, afEnd = af && af.selectionEnd;
   document.querySelectorAll('#navTabs button').forEach(b=>b.classList.toggle('active', b.dataset.n===curNav));
-  document.getElementById('main').innerHTML = curNav==='medaxil' ? viewMedaxil() : viewIslemede();
+  document.getElementById('main').innerHTML = curNav==='medaxil' ? viewMedaxil() : (curNav==='islemede' ? viewIslemede() : viewIstehsalat());
   if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
 }
 
 function viewMedaxil(){
   const search = document.getElementById('korpSearch')?.value || '';
-  let list = qaimeler.filter(q=>q.status==='medaxil');
+  let list = qaimeler.filter(q=>q.status==='medaxil' && q.qType!=='istehsalat');
   if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
   return `<div class="card">
@@ -149,10 +150,10 @@ function viewMedaxil(){
   </div>`;
 }
 function rowHtml(q){
-  const ilyasMode = isIlyas();
   const orig = q.photos||[];
   const med = q.medaxilPhotos||[];
-  const origThumb = (ilyasMode && orig[0]) ? `<span><span class="small">Sifariş:</span> <img class="thumb" src="${orig[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(orig).replace(/"/g,'&quot;')},0)"></span>` : '';
+  const showOrig = q.qType==='istehsalat';
+  const origThumb = (showOrig && orig[0]) ? `<span><span class="small">Sifariş:</span> <img class="thumb" src="${orig[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(orig).replace(/"/g,'&quot;')},0)"></span>` : '';
   const medThumb = med[0] ? `<span><span class="small">Mədaxil:</span> <img class="thumb" src="${med[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(med).replace(/"/g,'&quot;')},0)"></span>` : '<span class="small">mədaxil şəkli yoxdur</span>';
   const checked = q.korpChecked===true;
   return `<div class="row ${isTecili(q)?'tecili':''} ${checked?'checked':''}">
@@ -175,9 +176,9 @@ function rowHtml(q){
       <div>Kim işlədi: ${q.isleyen||'—'}</div>
       <div>Mədaxil №: ${q.medaxilNo||'—'}</div>
       ${(q.korpMessages && q.korpMessages.length) ? '<div class="small">Problem bildirilib</div>' : `<button class="danger" style="margin-top:6px" onclick="openProblemModal('${q.id}')">Problem bildir</button>`}
-      ${ilyasMode ? `<label style="display:flex;align-items:center;gap:6px;width:auto;margin-top:8px">
+      <label style="display:flex;align-items:center;gap:6px;width:auto;margin-top:8px">
         <input type="checkbox" style="width:auto" ${checked?'checked':''} onchange="toggleChecked('${q.id}',this.checked)"> Yoxlanıldı (bu qaimə şirkət sistemində yoxlanılıb)
-      </label>` : ''}
+      </label>
     </div>
   </div>`;
 }
@@ -188,7 +189,7 @@ function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle(
 
 function viewIslemede(){
   const search = document.getElementById('korpSearch2')?.value || '';
-  let list = qaimeler.filter(q=>q.status==='islemede');
+  let list = qaimeler.filter(q=>q.status==='islemede' && q.qType!=='istehsalat');
   if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (b.tookAt?.toMillis?.()||0)-(a.tookAt?.toMillis?.()||0));
   return `<div class="card">
@@ -209,6 +210,21 @@ function rowIslemede(q){
       <span>${q.isleyen||''}</span>
       <span class="small">${fmtDate(q.createdAt)}</span>
     </div>
+  </div>`;
+}
+
+function viewIstehsalat(){
+  const search = document.getElementById('korpSearch3')?.value || '';
+  let list = qaimeler.filter(q=>q.qType==='istehsalat');
+  if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
+  list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+  return `<div class="card">
+    <h3>İstehsalat Qaimləri</h3>
+    <input id="korpSearch3" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
+    <div class="line-grid small" style="font-weight:bold;padding:4px 8px;margin-top:10px">
+      <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Status</span>
+    </div>
+    ${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}
   </div>`;
 }
 
