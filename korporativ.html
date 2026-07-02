@@ -22,6 +22,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 .card{background:#fff;padding:14px;border-radius:8px;margin-bottom:12px}
 .row{border:1px solid #ddd;border-radius:6px;margin-bottom:6px;padding:8px;background:#fff}
 .row.tecili{border:2px solid #c0392b}
+.row.checked{opacity:.6}
 .line{cursor:pointer;font-size:14px}
 .line-grid{display:grid;grid-template-columns:90px 1fr 1fr 1fr 80px;gap:8px;align-items:center}
 .line-extras{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
@@ -41,7 +42,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 <div id="loginBox">
   <h3>Korporativ Giriş</h3>
   <label>İstifadəçi adı</label>
-  <input id="loginUser" value="korporativ">
+  <input id="loginUser" value="ilyas">
   <label>Şifrə</label>
   <input id="loginPass" type="password">
   <button style="margin-top:12px;width:100%" onclick="doLogin()">Daxil ol</button>
@@ -91,7 +92,7 @@ async function doLogin(){
   const snap = await db.collection('users').doc(u).get();
   const d = snap.exists ? snap.data() : null;
   const roles = d ? (d.roles || (d.role?[d.role]:[])) : [];
-  if(!d || d.password !== p || !roles.includes('korporativ')){
+  if(u !== 'ilyas' || !d || d.password !== p || !roles.includes('korporativ')){
     document.getElementById('loginErr').innerText = 'İstifadəçi adı və ya şifrə yanlışdır';
     return;
   }
@@ -132,9 +133,12 @@ function render(){
   if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
 }
 function rowHtml(q){
-  const photos = q.medaxilPhotos||[];
-  const thumb = photos[0] ? `<img class="thumb" src="${photos[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(photos).replace(/"/g,'&quot;')},0)">` : '<span class="small">şəkil yoxdur</span>';
-  return `<div class="row ${isTecili(q)?'tecili':''}">
+  const orig = q.photos||[];
+  const med = q.medaxilPhotos||[];
+  const origThumb = orig[0] ? `<span><span class="small">Sifariş:</span> <img class="thumb" src="${orig[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(orig).replace(/"/g,'&quot;')},0)"></span>` : '';
+  const medThumb = med[0] ? `<span><span class="small">Mədaxil:</span> <img class="thumb" src="${med[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(med).replace(/"/g,'&quot;')},0)"></span>` : '<span class="small">mədaxil şəkli yoxdur</span>';
+  const checked = q.korpChecked===true;
+  return `<div class="row ${isTecili(q)?'tecili':''} ${checked?'checked':''}">
     <div class="line" onclick="toggleDetails('${q.id}')">
       <div class="line-grid">
         <span><b>Qaimə_${q.no}</b></span>
@@ -143,15 +147,25 @@ function rowHtml(q){
         <span>${q.isleyen||''}</span>
         <span>${q.medaxilNo||''}</span>
       </div>
-      <div class="line-extras">${thumb}</div>
+      <div class="line-extras">
+        ${origThumb}${medThumb}
+        ${checked?'<span class="badge" style="background:#16a34a">✓ Yoxlanılıb</span>':''}
+      </div>
     </div>
     <div class="details hidden" id="det_${q.id}">
       <div>Tarix: ${fmtDate(q.createdAt)}</div>
       <div>Sifarişçi: ${q.sifarisVeren}</div>
       <div>Kim işlədi: ${q.isleyen||'—'}</div>
+      <div>Mədaxil №: ${q.medaxilNo||'—'}</div>
       ${(q.korpMessages && q.korpMessages.length) ? '<div class="small">Problem bildirilib</div>' : `<button class="danger" style="margin-top:6px" onclick="openProblemModal('${q.id}')">Problem bildir</button>`}
+      <label style="display:flex;align-items:center;gap:6px;width:auto;margin-top:8px">
+        <input type="checkbox" style="width:auto" ${checked?'checked':''} onchange="toggleChecked('${q.id}',this.checked)"> Yoxlanıldı (bu qaimə şirkət sistemində yoxlanılıb)
+      </label>
     </div>
   </div>`;
+}
+async function toggleChecked(id, val){
+  await db.collection('qaimeler').doc(id).update({korpChecked: val});
 }
 function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
 
