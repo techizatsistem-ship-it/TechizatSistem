@@ -71,14 +71,14 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const ALL_ROLES = ['sifarisci','anbar','korporativ'];
+const ALL_ROLES = ['sifarisci','anbar'];
 
 let currentUser = JSON.parse(sessionStorage.getItem('admincu')||'null');
 let qaimeler = [];
 let users = [];
 let curNav = 'users';
 
-function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Anbar',korporativ:'Korporativ',admin:'Admin'}[r]||r; }
+function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin'}[r]||r; }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
@@ -231,8 +231,25 @@ function viewQaimeler(){
     <div style="margin-top:10px">${rows || '<div class="small">Yoxdur</div>'}</div>
   </div>`;
 }
+const CL_API_KEY = '947222283424236', CL_API_SECRET = 'oDGIa0KI-R6KhOazJR7g5sWMzX0';
+async function sha1(str){ const b = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+function publicIdFromUrl(url){ const m = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+$/); return m?m[1]:null; }
+async function deleteFromCloudinary(url){
+  const pid = publicIdFromUrl(url); if(!pid) return;
+  const ts = Math.floor(Date.now()/1000);
+  const sig = await sha1(`public_id=${pid}&timestamp=${ts}${CL_API_SECRET}`);
+  const fd = new FormData();
+  fd.append('public_id', pid); fd.append('timestamp', ts); fd.append('api_key', CL_API_KEY); fd.append('signature', sig);
+  try{ await fetch(`https://api.cloudinary.com/v1_1/u0vnb2cg/image/destroy`, {method:'POST', body:fd}); }catch(e){ console.error(e); }
+}
+async function deleteQaimePhotos(q){
+  const all = [...(q.photos||[]), ...(q.medaxilPhotos||[])];
+  await Promise.all(all.map(deleteFromCloudinary));
+}
 async function adminDeleteQ(id){
   if(!confirm('Bu qaimə tamamilə sistemdən silinsin? Bu əməliyyat geri qaytarılmır.')) return;
+  const q = qaimeler.find(x=>x.id===id);
+  if(q) await deleteQaimePhotos(q);
   await db.collection('qaimeler').doc(id).delete();
 }
 </script>
