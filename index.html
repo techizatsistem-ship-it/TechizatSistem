@@ -105,7 +105,7 @@ let dismissed = new Set();
 let pickedFiles = [];
 let medPicked = [];
 
-function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Anbar',korporativ:'Korporativ',admin:'Admin'}[r]||r; }
+function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin'}[r]||r; }
 
 async function seedUsers(){
   const defs = [
@@ -132,8 +132,14 @@ async function doLogin(){
   }
   const d = snap.data();
   const roles = d.roles || (d.role ? [d.role] : []);
-  if(roles.includes('admin')){ location.href = 'admin.html'; return; }
-  if(roles.includes('korporativ')){ location.href = 'korporativ.html'; return; }
+  if(roles.includes('admin')){
+    sessionStorage.setItem('admincu', JSON.stringify({username:u, name:d.name}));
+    location.href = 'admin.html'; return;
+  }
+  if(roles.includes('korporativ')){
+    sessionStorage.setItem('korpcu', JSON.stringify({username:u, name:d.name}));
+    location.href = 'korporativ.html'; return;
+  }
   currentUser = {username:u, roles, mode:roles[0], name:d.name};
   localStorage.setItem('cu', JSON.stringify(currentUser));
   boot();
@@ -612,7 +618,7 @@ function anbarMessages(){
   const out = [];
   qaimeler.forEach(q=>{
     if(q.isleyen===currentUser.name && q.korpMessages && q.korpMessages.length){
-      q.korpMessages.forEach(m=> out.push({...m, qno:q.no, qid:q.id}));
+      q.korpMessages.forEach((m,i)=>{ if(!m.solved) out.push({...m, qno:q.no, qid:q.id, idx:i}); });
     }
   });
   out.sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
@@ -629,9 +635,33 @@ function openBell(){
   const msgs = anbarMessages();
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
     <h3>Korporativdən Bildirişlər</h3>
-    ${msgs.map(m=>`<div class="row"><b>Qaimə_${m.qno}</b> — ${fmtDate(m.createdAt)}<div>Ad: ${m.ad}</div><div>Mesaj: ${m.text}</div></div>`).join('') || '<div class="small">Yoxdur</div>'}
+    ${msgs.map(m=>`<div class="row" onclick="openMessageDetail('${m.qid}',${m.idx})" style="cursor:pointer"><b>Qaimə_${m.qno}</b> — ${m.ad}<div class="small">${m.text}</div></div>`).join('') || '<div class="small">Yoxdur</div>'}
     <button class="sec" style="margin-top:10px" onclick="closeModal()">Bağla</button>
   </div></div>`;
+}
+function openMessageDetail(qid, idx){
+  const q = qaimeler.find(x=>x.id===qid);
+  const m = q.korpMessages[idx];
+  document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
+    <h3>Qaimə_${q.no} — ${m.ad}</h3>
+    ${q.photos&&q.photos[0]?`<img src="${q.photos[0]}" style="width:100%;border-radius:6px;cursor:pointer" onclick="openViewer(${JSON.stringify(q.photos).replace(/"/g,'&quot;')},0)">`:''}
+    <div style="margin-top:8px">${m.text}</div>
+    <label>Həll qeydi *</label>
+    <textarea id="bmSol" rows="3"></textarea>
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button class="sec" onclick="closeModal()">Bağla</button>
+      <button onclick="resolveMessage('${qid}',${idx})">Bitdi</button>
+    </div>
+  </div></div>`;
+}
+async function resolveMessage(qid, idx){
+  const note = document.getElementById('bmSol').value.trim();
+  if(!note) return;
+  const q = qaimeler.find(x=>x.id===qid);
+  const arr = q.korpMessages.slice();
+  arr[idx] = {...arr[idx], solved:true, solution:note};
+  await db.collection('qaimeler').doc(qid).update({korpMessages: arr});
+  closeModal();
 }
 
 function checkNotifications(){
