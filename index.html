@@ -347,7 +347,7 @@ function drawWatermark(ctx, w, lines){
   ctx.textBaseline = 'top';
   ctx.lineWidth = fs*0.15;
   ctx.strokeStyle = 'rgba(255,255,255,.35)';
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = '#ff0000';
   ctx.globalAlpha = 0.2;
   lines.forEach((t,i)=>{ const y=6+i*(fs+4); ctx.strokeText(t,6,y); ctx.fillText(t,6,y); });
   ctx.globalAlpha = 1;
@@ -639,12 +639,22 @@ function openViewer(photos, idx){
     document.getElementById('vCount').innerText = (idx+1)+'/'+photos.length;
     document.getElementById('vDl').href = dlUrl(photos[idx]);
   }
-  document.getElementById('vPrev').onclick = ()=>{ idx=(idx-1+photos.length)%photos.length; rotate=0; scale=1; update(); };
-  document.getElementById('vNext').onclick = ()=>{ idx=(idx+1)%photos.length; rotate=0; scale=1; update(); };
+  document.getElementById('vPrev').onclick = ()=>{ idx=(idx-1+photos.length)%photos.length; rotate=0; scale=1; img.style.transformOrigin='50% 50%'; update(); };
+  document.getElementById('vNext').onclick = ()=>{ idx=(idx+1)%photos.length; rotate=0; scale=1; img.style.transformOrigin='50% 50%'; update(); };
   document.getElementById('vRotate').onclick = ()=>{ rotate=(rotate+90)%360; update(); };
+  function setOrigin(clientX, clientY){
+    const rect = img.getBoundingClientRect();
+    if(rect.width===0 || rect.height===0) return;
+    let ox = ((clientX-rect.left)/rect.width)*100;
+    let oy = ((clientY-rect.top)/rect.height)*100;
+    ox = Math.max(0, Math.min(100, ox));
+    oy = Math.max(0, Math.min(100, oy));
+    img.style.transformOrigin = `${ox}% ${oy}%`;
+  }
   const wrap = document.getElementById('vWrap');
   wrap.addEventListener('wheel', e=>{
     e.preventDefault();
+    setOrigin(e.clientX, e.clientY);
     scale = Math.max(0.5, Math.min(5, scale + (e.deltaY<0?0.15:-0.15)));
     img.style.transform = `rotate(${rotate}deg) scale(${scale})`;
   }, {passive:false});
@@ -653,6 +663,9 @@ function openViewer(photos, idx){
       e.preventDefault();
       const dx = e.touches[0].clientX-e.touches[1].clientX, dy = e.touches[0].clientY-e.touches[1].clientY;
       const dist = Math.hypot(dx,dy);
+      const midX = (e.touches[0].clientX+e.touches[1].clientX)/2;
+      const midY = (e.touches[0].clientY+e.touches[1].clientY)/2;
+      setOrigin(midX, midY);
       if(pinchDist!=null){
         scale = Math.max(0.5, Math.min(5, scale*(dist/pinchDist)));
         img.style.transform = `rotate(${rotate}deg) scale(${scale})`;
@@ -661,6 +674,7 @@ function openViewer(photos, idx){
     }
   }, {passive:false});
   wrap.addEventListener('touchend', ()=>{ pinchDist=null; });
+  img.style.transformOrigin = '50% 50%';
   update();
 }
 function closeModal(){
