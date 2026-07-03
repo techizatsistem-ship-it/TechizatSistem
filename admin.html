@@ -221,6 +221,23 @@ function openUserStats(id){
   </div></div>`;
 }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+function openQaimeDetail(id){
+  const q = qaimeler.find(x=>x.id===id);
+  if(!q) return;
+  document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
+    <h3>Qaimə_${q.no}${q.qType==='istehsalat'?' <span class="chip">İstehsalat</span>':''}</h3>
+    <table>
+      <tr><td>Tarix</td><td>${fmtDate(q.createdAt)}</td></tr>
+      <tr><td>Sifarişçi</td><td>${q.sifarisVeren||''}</td></tr>
+      <tr><td>Anbar</td><td>${q.anbar||''}</td></tr>
+      <tr><td>Kim üçün</td><td>${q.kimUcun||''}</td></tr>
+      <tr><td>Status</td><td>${statusWithWho(q)}</td></tr>
+      ${q.tookAt?`<tr><td>${q.status==='medaxil'?'Mədaxil tarixi':'İşə başlama tarixi'}</td><td>${fmtDate(q.tookAt)}</td></tr>`:''}
+      ${hasOpenProblem(q)?`<tr><td>Problem</td><td>${q.problem.text||'Var'}</td></tr>`:''}
+    </table>
+    <button class="sec" style="margin-top:10px" onclick="closeModal()">Bağla</button>
+  </div></div>`;
+}
 
 function viewQaimeler(){
   const search = document.getElementById('adminSearch')?.value || '';
@@ -229,7 +246,7 @@ function viewQaimeler(){
   const rows = list.map(q=>{
     const photos = q.photos||[];
     const thumb = photos[0] ? `<img class="thumb" src="${photos[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(photos).replace(/"/g,'&quot;')},0)">` : '<span class="small">—</span>';
-    return `<div class="row ${isTecili(q)?'tecili':''}">
+    return `<div class="row ${isTecili(q)?'tecili':''}" onclick="openQaimeDetail('${q.id}')">
     <div class="line-grid">
       <span>${thumb}</span>
       <span><b>Qaimə_${q.no}</b>${q.qType==='istehsalat'?' <span class="chip">İstehsalat</span>':''}<br><span class="small">${fmtDate(q.createdAt)}</span></span>
