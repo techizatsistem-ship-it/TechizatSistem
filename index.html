@@ -420,7 +420,7 @@ function viewAnbarList(src){
   const tabs = [['aktiv','Mədaxil olunmayanlar'],['islemede','İşləyirəm'],['medaxil','Mədaxil Olan'],['tecili','Təcili'],['problemli','Problemli']];
   let list = filterByTab(curTab, src);
   const search = document.getElementById('anbarSearch')?.value || '';
-  if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
+  if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
   const title = src==='istehsalat' ? 'İstehsalat Qaimləri' : 'Qaimlər';
   return `<div class="card">
