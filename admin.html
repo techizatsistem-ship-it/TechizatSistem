@@ -239,9 +239,11 @@ function openQaimeDetail(id){
   </div></div>`;
 }
 
+let qStatusFilter = 'yeni';
+function setQStatus(s){ qStatusFilter = s; render(); }
 function viewQaimeler(){
   const search = document.getElementById('adminSearch')?.value || '';
-  let list = qaimeler;
+  let list = qaimeler.filter(q=>q.status===qStatusFilter);
   if(search) list = list.filter(q=> String(q.no).includes(search) || (q.sifarisVeren||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
   const rows = list.map(q=>{
     const photos = q.photos||[];
@@ -260,7 +262,12 @@ function viewQaimeler(){
   </div>`;
   }).join('');
   return `<div class="card">
-    <h3>Bütün Qaimlər (${list.length})</h3>
+    <h3>Qaimlər (${list.length})</h3>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button class="${qStatusFilter==='yeni'?'':'sec'}" onclick="setQStatus('yeni')">Yeni</button>
+      <button class="${qStatusFilter==='islemede'?'':'sec'}" onclick="setQStatus('islemede')">İşlənilir</button>
+      <button class="${qStatusFilter==='medaxil'?'':'sec'}" onclick="setQStatus('medaxil')">Mədaxil olunub</button>
+    </div>
     <input id="adminSearch" placeholder="Axtar (№ / sifarişçi / kim üçün)" value="${search}" oninput="render()">
     <div style="margin-top:10px">${rows || '<div class="small">Yoxdur</div>'}</div>
   </div>`;
