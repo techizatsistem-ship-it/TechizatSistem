@@ -99,11 +99,12 @@ function printImage(url){
   doc.write(`<html><head><style>@page{margin:0}html,body{margin:0;height:100%}body{display:flex;align-items:center;justify-content:center}img{max-width:100vw;max-height:100vh;object-fit:contain}</style></head><body><img src="${url}" onload="setTimeout(()=>{window.focus();window.print();},200)"></body></html>`);
   doc.close();
 }
-function photoThumb(url, allPhotos, size){
+function photoThumb(url, allPhotos, size, blurable){
   size = size || 50;
+  if(blurable===undefined) blurable = true;
   const idx = allPhotos.indexOf(url);
-  const openCall = `openViewer(${JSON.stringify(allPhotos).replace(/"/g,'&quot;')},${idx})`;
-  if(!shouldBlur()){
+  const openCall = `openViewer(${JSON.stringify(allPhotos).replace(/"/g,'&quot;')},${idx},${blurable})`;
+  if(!blurable || !shouldBlur()){
     return `<img class="thumb" src="${url}" onclick="event.stopPropagation();${openCall}">`;
   }
   return `<span class="thumb blurthumb" style="width:${size}px;height:${size}px" onclick="event.stopPropagation();${openCall}">
@@ -201,7 +202,7 @@ function rowHtml(q){
   const orig = q.photos||[];
   const med = q.medaxilPhotos||[];
   const origThumb = orig[0] ? `<span><span class="small">Sifariş:</span> ${photoThumb(orig[0], orig)}</span>` : '';
-  const medThumb = med[0] ? `<span><span class="small">Mədaxil:</span> ${photoThumb(med[0], med)}</span>` : '<span class="small">mədaxil şəkli yoxdur</span>';
+  const medThumb = med[0] ? `<span><span class="small">Mədaxil:</span> ${photoThumb(med[0], med, 50, false)}</span>` : '<span class="small">mədaxil şəkli yoxdur</span>';
   const checked = q.korpChecked===true;
   return `<div class="row ${isTecili(q)?'tecili':''} ${checked?'checked':''}">
     <div class="line" onclick="toggleDetails('${q.id}')">
@@ -305,9 +306,10 @@ async function sendProblem(id){
 }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
 
-function openViewer(photos, idx){
+function openViewer(photos, idx, blurable){
   let rotate=0, scale=1, pinchDist=null;
-  const blur = shouldBlur();
+  if(blurable===undefined) blurable = true;
+  const blur = blurable && shouldBlur();
   document.getElementById('modalRoot').innerHTML = `<div id="viewerModal">
     <div class="bar">
       <button class="sec" onclick="closeModal()">Bağla</button>
