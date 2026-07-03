@@ -42,7 +42,8 @@ main{padding:12px;max-width:900px;margin:0 auto}
 .modal .box{background:#fff;padding:16px;border-radius:8px;max-width:420px;width:100%;max-height:90vh;overflow:auto}
 #viewerModal{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;z-index:60}
 #viewerModal img{max-width:100%;max-height:80vh;margin:auto;transition:transform .2s}
-#viewerModal .bar{display:flex;gap:8px;padding:10px;justify-content:center;flex-wrap:wrap}
+#viewerModal .bar{display:flex;gap:8px;padding:10px;padding-top:calc(10px + env(safe-area-inset-top));justify-content:center;flex-wrap:wrap;flex-shrink:0;background:#000;position:relative;z-index:1}
+#viewerModal .bar button, #viewerModal .bar a button{padding:8px 10px;font-size:14px}
 .badge{background:#c0392b;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px}
 .small{font-size:12px;color:#666}
 .imgpick{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
@@ -295,7 +296,7 @@ function viewAddForm(){
     <label>Qeyd</label>
     <textarea id="f_qeyd" rows="2"></textarea>
     <label><input type="checkbox" id="f_tecili" style="width:auto"> Təcilidir</label>
-    <label>Şəkillər</label>
+    <label>Şəkillər *</label>
     <div style="display:flex;gap:6px">
       <input type="file" id="f_cam" accept="image/*" capture="environment" multiple style="display:none" onchange="onPick(event)">
       <input type="file" id="f_gal" accept="image/*" multiple style="display:none" onchange="onPick(event)">
@@ -375,6 +376,7 @@ async function submitQaime(){
   const tecili = document.getElementById('f_tecili').checked;
   const err = document.getElementById('addErr');
   if(!anbar || !kim || !odenis){ err.innerText='Anbar, kim üçün və ödəniş tipi mütləqdir'; return; }
+  if(pickedFiles.length===0){ err.innerText='Ən azı bir şəkil əlavə etməlisiniz'; return; }
   err.innerText = '';
   const rec = {
     localId: 'p'+Date.now()+Math.random().toString(36).slice(2),
@@ -507,6 +509,10 @@ function sifarisciActions(q){
   if(q.status==='yeni' && q.sifarisVeren===currentUser.name){
     html += `<div style="display:flex;gap:6px;margin-top:6px">
       <button class="sec" onclick="openEditModal('${q.id}')">Düzəliş et</button>
+    </div>`;
+  }
+  if(q.status!=='medaxil' && q.sifarisVeren===currentUser.name){
+    html += `<div style="display:flex;gap:6px;margin-top:6px">
       <button class="danger" onclick="deleteQaime('${q.id}')">Sil</button>
     </div>`;
   }
@@ -520,6 +526,7 @@ async function imtinaEt(id){
 }
 function openEditModal(id){
   const q = qaimeler.find(x=>x.id===id);
+  pushModalHistory();
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
     <h3>Qaimə_${q.no} — Düzəliş</h3>
     <label>Hansı anbara alındı</label><input id="e_anbar" value="${q.anbar}">
@@ -569,8 +576,9 @@ async function deleteQaimePhotos(q){
   return failed;
 }
 async function deleteQaime(id){
-  if(!confirm('Qaimə silinsin?')) return;
   const q = qaimeler.find(x=>x.id===id);
+  if(q && q.status==='medaxil'){ alert('Mədaxil olunmuş qaimə silinə bilməz.'); return; }
+  if(!confirm('Qaimə silinsin?')) return;
   let failed = [];
   if(q) failed = await deleteQaimePhotos(q);
   await db.collection('qaimeler').doc(id).delete();
@@ -589,8 +597,25 @@ async function bulkTake(){
   render();
 }
 
+let modalHistoryPushed = false;
+function pushModalHistory(){
+  if(!modalHistoryPushed){
+    history.pushState({modalOpen:true}, '');
+    modalHistoryPushed = true;
+  }
+}
+window.addEventListener('popstate', ()=>{
+  const root = document.getElementById('modalRoot');
+  if(root && root.innerHTML !== ''){
+    root.innerHTML = '';
+    medPicked = [];
+  }
+  modalHistoryPushed = false;
+});
+
 function openViewer(photos, idx){
   let rotate = 0, scale = 1, pinchDist = null;
+  pushModalHistory();
   const root = document.getElementById('modalRoot');
   root.innerHTML = `<div id="viewerModal">
     <div class="bar">
@@ -638,9 +663,17 @@ function openViewer(photos, idx){
   wrap.addEventListener('touchend', ()=>{ pinchDist=null; });
   update();
 }
-function closeModal(){ document.getElementById('modalRoot').innerHTML=''; medPicked=[]; }
+function closeModal(){
+  document.getElementById('modalRoot').innerHTML='';
+  medPicked=[];
+  if(modalHistoryPushed){
+    modalHistoryPushed = false;
+    history.back();
+  }
+}
 
 function openProblemModal(id){
+  pushModalHistory();
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
     <h3>Problem bildir</h3>
     <textarea id="probText" rows="3" placeholder="Problemi yazın"></textarea>
@@ -659,6 +692,7 @@ async function saveProblem(id){
 
 function openMedaxilModal(id){
   medPicked = [];
+  pushModalHistory();
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box" id="medBox">
     <h3>Mədaxil edildi</h3>
     <label>Qaimə nömrəsi *</label>
@@ -724,6 +758,7 @@ async function saveMedaxil(id){
 
 function openResolveModal(id){
   const q = qaimeler.find(x=>x.id===id);
+  pushModalHistory();
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
     <h3>Qaimə_${q.no} — Problem</h3>
     ${q.photos&&q.photos[0]?`<img src="${q.photos[0]}" style="width:100%;border-radius:6px;cursor:pointer" onclick="openViewer(${JSON.stringify(q.photos).replace(/"/g,'&quot;')},0)">`:''}
@@ -765,6 +800,7 @@ function renderBell(){
 }
 function openBell(){
   const msgs = anbarMessages();
+  pushModalHistory();
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
     <h3>Korporativdən Bildirişlər</h3>
     ${msgs.map(m=>`<div class="row" onclick="openMessageDetail('${m.qid}',${m.idx})" style="cursor:pointer"><b>Qaimə_${m.qno}</b> — ${m.ad}<div class="small">${m.text}</div></div>`).join('') || '<div class="small">Yoxdur</div>'}
@@ -774,6 +810,7 @@ function openBell(){
 function openMessageDetail(qid, idx){
   const q = qaimeler.find(x=>x.id===qid);
   const m = q.korpMessages[idx];
+  pushModalHistory();
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
     <h3>Qaimə_${q.no} — ${m.ad}</h3>
     ${q.photos&&q.photos[0]?`<img src="${q.photos[0]}" style="width:100%;border-radius:6px;cursor:pointer" onclick="openViewer(${JSON.stringify(q.photos).replace(/"/g,'&quot;')},0)">`:''}
@@ -800,6 +837,7 @@ function checkNotifications(){
   const mine = qaimeler.filter(q=>hasOpenProblem(q) && q.sifarisVeren===currentUser.name && !dismissed.has(q.id));
   if(mine.length>0 && !document.getElementById('modalRoot').innerHTML){
     pendingNotifIds = mine.map(q=>q.id);
+    pushModalHistory();
     document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
       <h3>Problemli qaimələr (${mine.length})</h3>
       ${mine.map(q=>`<div class="row" onclick="openResolveModal('${q.id}')" style="cursor:pointer"><b>Qaimə_${q.no}</b> — ${q.problem.text}</div>`).join('')}
