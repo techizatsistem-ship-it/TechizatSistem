@@ -235,15 +235,22 @@ function openQaimeDetail(id){
       ${q.tookAt?`<tr><td>${q.status==='medaxil'?'Mədaxil tarixi':'İşə başlama tarixi'}</td><td>${fmtDate(q.tookAt)}</td></tr>`:''}
       ${hasOpenProblem(q)?`<tr><td>Problem</td><td>${q.problem.text||'Var'}</td></tr>`:''}
     </table>
-    <button class="sec" style="margin-top:10px" onclick="closeModal()">Bağla</button>
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button class="sec" onclick="closeModal()">Bağla</button>
+      <button onclick="markChecked('${q.id}')">Yoxlanıldı</button>
+    </div>
   </div></div>`;
+}
+async function markChecked(id){
+  await db.collection('qaimeler').doc(id).update({checked:true});
+  closeModal();
 }
 
 let qStatusFilter = 'yeni';
 function setQStatus(s){ qStatusFilter = s; render(); }
 function viewQaimeler(){
   const search = document.getElementById('adminSearch')?.value || '';
-  let list = qaimeler.filter(q=>q.status===qStatusFilter);
+  let list = qaimeler.filter(q=>q.status===qStatusFilter && !q.checked);
   if(search) list = list.filter(q=> String(q.no).includes(search) || (q.sifarisVeren||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
   const rows = list.map(q=>{
     const photos = q.photos||[];
