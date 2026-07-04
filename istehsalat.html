@@ -90,9 +90,12 @@ function kimFilter(){
   box.style.display = 'block';
 }
 function kimPick(id, name){
-  document.getElementById('f_kim').value = name;
+  const inp = document.getElementById('f_kim');
+  inp.value = name;
   document.getElementById('f_kim_id').value = id;
   document.getElementById('kimBox').style.display = 'none';
+  inp.readOnly = true;
+  inp.blur();
 }
 const CLOUD_NAME='u0vnb2cg', UPLOAD_PRESET='TechizatSistemCloudinary';
 
@@ -104,6 +107,7 @@ let pendingNotifIds = [];
 let pickedFiles = [];
 let pendingQaimeler = [];
 let sending = false;
+let reviewQaimeler = [];
 
 const IDB_NAME='qaimeOffline', IDB_STORE='pending';
 function idbOpen(){ return new Promise((res,rej)=>{ const req=indexedDB.open(IDB_NAME,1); req.onupgradeneeded=()=>req.result.createObjectStore(IDB_STORE,{keyPath:'localId'}); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
@@ -125,11 +129,12 @@ async function trySendOne(rec){
       return val;
     });
     await db.collection('qaimeler').add({
-      no, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
+      no, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, kimUcunId: rec.kimUcunId||null, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
       tecili: rec.tecili, photos, photosUploading:false, status:'yeni', isleyen:null, problem:null,
       medaxilPhotos: [], medaxilPhotosUploading:false, qType:'istehsalat',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(), medaxilNo:null
     });
+    if(rec.kimUcunId) sendPushToKorUser(db, rec.kimUcunId, 'Yeni sifariş', `Qaimə_${no} sizin üçün qeydə alındı.`);
     await idbDelete(rec.localId);
     pendingQaimeler = pendingQaimeler.filter(x=>x.localId!==rec.localId);
     render();
@@ -168,9 +173,13 @@ function boot(){
   document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
   document.getElementById('userInfo').style.cursor='pointer';
   document.getElementById('userInfo').onclick = logout;
-  document.getElementById('navTabs').innerHTML = [['add','Qaimə Əlavə Et'],['mine','Mənim Qaimlərim'],['stats','Analitika']]
+  document.getElementById('navTabs').innerHTML = [['add','Qaimə Əlavə Et'],['mine','Mənim Qaimlərim'],['sorgu','Sorğu'],['tesdiqlenib','Təsdiq edilib'],['medaxiledilib','Mədaxil edilib'],['stats','Analitika']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   setupPush(db, currentUser.username);
+  db.collection('qaimeler').where('status','in',['sorgu','tesdiqlenib']).onSnapshot(snap=>{
+    reviewQaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    render();
+  });
   db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(q=>q.qType==='istehsalat');
     render();
@@ -188,7 +197,7 @@ function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Da
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
-function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':'Mədaxil edildi'); }
+function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğuda':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
 
 function render(){
   const af = document.activeElement;
@@ -199,11 +208,44 @@ function render(){
   const m = document.getElementById('main');
   if(curNav==='add') m.innerHTML = viewAddForm();
   else if(curNav==='mine') m.innerHTML = viewMine();
+  else if(curNav==='sorgu') m.innerHTML = viewSorgu();
+  else if(curNav==='tesdiqlenib') m.innerHTML = viewTesdiqlenib();
+  else if(curNav==='medaxiledilib') m.innerHTML = viewMedaxilEdilib();
   else m.innerHTML = viewStats();
   if(afId){ const el=document.getElementById(afId); if(el && el.focus){ el.focus(); if(afStart!=null && el.setSelectionRange) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
 }
 
-function viewAddForm(){
+function viewSorgu(){
+  const list = reviewQaimeler.filter(q=>q.status==='sorgu').slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+  return `<div class="card"><h3>Sorğu (${list.length})</h3>
+    ${list.map(q=>reviewRow(q,true)).join('') || '<div class="small">Yoxdur</div>'}</div>`;
+}
+function viewTesdiqlenib(){
+  const list = reviewQaimeler.filter(q=>q.status==='tesdiqlenib').slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+  return `<div class="card"><h3>Təsdiq edilib (${list.length})</h3>
+    ${list.map(q=>reviewRow(q,false)).join('') || '<div class="small">Yoxdur</div>'}</div>`;
+}
+function viewMedaxilEdilib(){
+  const list = qaimeler.filter(q=>q.status==='medaxil').slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+  return `<div class="card"><h3>Mədaxil edilib (${list.length})</h3>
+    ${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}</div>`;
+}
+function reviewRow(q, isSorgu){
+  const orig = q.photos||[];
+  const med = q.medaxilPhotos||[];
+  return `<div class="row ${isTecili(q)?'tecili':''}">
+    <div><b>Qaimə_${q.no}</b> <span class="small">${fmtDate(q.createdAt)}</span></div>
+    <div class="small">Sifarişçi: ${q.sifarisVeren||''} | Anbar: ${q.anbar||''} | Kim üçün: ${q.kimUcun||''}</div>
+    <div class="small">Mədaxil №: ${q.medaxilNo||''}</div>
+    <div class="line-extras" style="margin-top:6px">
+      ${orig[0]?`<span><span class="small">Sifariş şəkli:</span><br><img class="thumb" src="${orig[0]}" onclick="openViewer(${JSON.stringify(orig).replace(/"/g,'&quot;')},0)"></span>`:''}
+      ${med[0]?`<span><span class="small">Mədaxil şəkli:</span><br><img class="thumb" src="${med[0]}" onclick="openViewer(${JSON.stringify(med).replace(/"/g,'&quot;')},0)"></span>`:'<span class="small">mədaxil şəkli yoxdur</span>'}
+    </div>
+    ${isSorgu?`<button style="margin-top:6px" onclick="confirmSorgu('${q.id}')">Təsdiq edildi</button>`:`<button class="sec" style="margin-top:6px" onclick="revertTesdiq('${q.id}')">Geri çək</button>`}
+  </div>`;
+}
+async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib'}); }
+async function revertTesdiq(id){ await db.collection('qaimeler').doc(id).update({status:'sorgu'}); }
   const anbarList = [...new Set(qaimeler.map(q=>q.anbar).filter(Boolean))];
   return `<div class="card">
     <h3>Qaimə Əlavə Et</h3>
@@ -214,7 +256,7 @@ function viewAddForm(){
     <datalist id="dl_anbar">${anbarList.map(a=>`<option value="${a}">`).join('')}</datalist>
     <label>Kim üçün alındı *</label>
     <div style="position:relative">
-      <input id="f_kim" autocomplete="off" oninput="kimFilter()" onfocus="kimFilter()" onblur="setTimeout(()=>{const b=document.getElementById('kimBox'); if(b) b.style.display='none';},150)">
+      <input id="f_kim" autocomplete="off" oninput="kimFilter()" onfocus="if(!this.readOnly) kimFilter()" onclick="if(this.readOnly){this.readOnly=false;this.value='';document.getElementById('f_kim_id').value='';kimFilter();}" onblur="setTimeout(()=>{const b=document.getElementById('kimBox'); if(b) b.style.display='none';},150)">
       <input type="hidden" id="f_kim_id">
       <div id="kimBox" style="display:none;position:absolute;z-index:50;background:#fff;border:1px solid #ccc;max-height:180px;overflow:auto;width:100%;box-shadow:0 4px 10px rgba(0,0,0,.15)"></div>
     </div>
@@ -306,7 +348,7 @@ async function submitQaime(){
   err.innerText = '';
   const rec = {
     localId: 'p'+Date.now()+Math.random().toString(36).slice(2),
-    qType:'istehsalat', sifarisVeren: currentUser.name, anbar, kimUcun: kim, odenisTipi: odenis, qeyd, tecili,
+    qType:'istehsalat', sifarisVeren: currentUser.name, anbar, kimUcun: kim, kimUcunId: document.getElementById('f_kim_id').value || null, odenisTipi: odenis, qeyd, tecili,
     files: pickedFiles.map(p=>p.file)
   };
   await idbPut(rec);
@@ -317,9 +359,12 @@ async function submitQaime(){
 }
 
 function viewMine(){
-  const mine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
+  const search = document.getElementById('istSearch')?.value || '';
+  let mine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
+  if(search) mine = mine.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   const pend = pendingQaimeler;
   return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>
+    <input id="istSearch" placeholder="Axtar (kim üçün / qaimə № / anbar)" value="${search}" oninput="render()">
     <div class="line-grid small" style="font-weight:bold;padding:4px 8px">
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>Ödəniş</span><span>Status</span>
     </div>
