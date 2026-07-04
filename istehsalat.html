@@ -86,7 +86,7 @@ function kimFilter(){
   const q = document.getElementById('f_kim').value.trim().toLowerCase();
   const box = document.getElementById('kimBox');
   const list = korUsers.filter(u=>u.name.toLowerCase().includes(q));
-  box.innerHTML = list.map(u=>`<div style="padding:8px;cursor:pointer;border-bottom:1px solid #eee" onclick="kimPick('${u.id}',${JSON.stringify(u.name)})">${u.name}</div>`).join('') || '<div style="padding:8px;color:#999">Tapılmadı — yazdığınız qəbul olunacaq</div>';
+  box.innerHTML = list.map(u=>`<div style="padding:8px;cursor:pointer;border-bottom:1px solid #eee" onclick="kimPick('${u.id}',${JSON.stringify(u.name).replace(/"/g,'&quot;')})">${u.name}</div>`).join('') || '<div style="padding:8px;color:#999">Tapılmadı — yazdığınız qəbul olunacaq</div>';
   box.style.display = 'block';
 }
 function kimPick(id, name){
@@ -101,6 +101,7 @@ const CLOUD_NAME='u0vnb2cg', UPLOAD_PRESET='TechizatSistemCloudinary';
 
 let currentUser = JSON.parse(sessionStorage.getItem('istehcu')||'null');
 let qaimeler = [];
+let myQaimeler = [];
 let curNav = 'add';
 let dismissed = new Set();
 let pendingNotifIds = [];
@@ -108,6 +109,56 @@ let pickedFiles = [];
 let pendingQaimeler = [];
 let sending = false;
 let reviewQaimeler = [];
+
+// ---- Səhifələmə (Firestore read limitini azaltmaq üçün: hər tabda max 10 qaimə, lazım olanda çəkilir) ----
+const PAGE_SIZE = 10;
+let pg = {};
+async function pgLoad(key, whereFn, page){
+  if(!pg[key]) pg[key] = {cursors:[null], mode:null, page:1};
+  const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1;
+  try{
+    if(st.mode==='fallback') throw 0;
+    for(let p=1;p<=page;p++){
+      if(st.cursors[p]!==undefined) continue;
+      let q = whereFn().orderBy('createdAt','desc').limit(PAGE_SIZE);
+      if(st.cursors[p-1]) q = whereFn().orderBy('createdAt','desc').startAfter(st.cursors[p-1]).limit(PAGE_SIZE);
+      const snap = await q.get();
+      st.cursors[p] = snap.docs.length ? snap.docs[snap.docs.length-1] : (st.cursors[p-1]||null);
+      if(p===page) st.rows = snap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    if(st.total==null){ try{ const c = await whereFn().count().get(); st.total = c.data().count; }catch(e){ st.total=st.rows?st.rows.length:0; } }
+    st.mode = 'index';
+  }catch(e){
+    if(e) console.warn('Pagination indeksi yoxdur, ehtiyat rejiminə keçildi:', e);
+    if(!st.all){
+      const snap = await whereFn().get();
+      st.all = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+    }
+    st.total = st.all.length;
+    st.mode = 'fallback';
+    st.rows = st.all.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  }
+  render();
+}
+function pgGoto(key, page){ pgLoad(key, pg[key].wf, page); }
+function pgButtons(key){
+  const st = pg[key];
+  if(!st || !st.total || st.total<=PAGE_SIZE) return '';
+  const pages = Math.ceil(st.total/PAGE_SIZE);
+  let h = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">';
+  for(let i=1;i<=pages;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+  return h+'</div>';
+}
+function searchList(key, whereFn, search, extraFilter){
+  if(!pg[key] || pg[key].mode!=='search'){
+    if(!pg[key]){ pg[key] = {mode:'search'}; whereFn().get().then(snap=>{ pg[key].all = snap.docs.map(d=>({id:d.id,...d.data()})); render(); }); }
+  }
+  let list = (pg[key] && pg[key].all) || [];
+  if(extraFilter) list = list.filter(extraFilter);
+  const s = search.toLowerCase();
+  list = list.filter(q=> String(q.no).includes(search) || (q.kimUcun||'').toLowerCase().includes(s) || (q.anbar||'').toLowerCase().includes(s));
+  return list.slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+}
 
 const IDB_NAME='qaimeOffline', IDB_STORE='pending';
 function idbOpen(){ return new Promise((res,rej)=>{ const req=indexedDB.open(IDB_NAME,1); req.onupgradeneeded=()=>req.result.createObjectStore(IDB_STORE,{keyPath:'localId'}); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
@@ -137,6 +188,7 @@ async function trySendOne(rec){
     if(rec.kimUcunId) sendPushToKorUser(db, rec.kimUcunId, 'Yeni sifariş', `Qaimə_${no} sizin üçün qeydə alındı.`);
     await idbDelete(rec.localId);
     pendingQaimeler = pendingQaimeler.filter(x=>x.localId!==rec.localId);
+    pg={}; statsData=null;
     render();
     return true;
   }catch(e){ console.error(e); return false; }
@@ -176,14 +228,11 @@ function boot(){
   document.getElementById('navTabs').innerHTML = [['add','Qaimə Əlavə Et'],['mine','Mənim Qaimlərim'],['sorgu','Sorğu'],['tesdiqlenib','Təsdiq edilib'],['medaxiledilib','Mədaxil edilib'],['stats','Analitika']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   setupPush(db, currentUser.username);
-  db.collection('qaimeler').where('status','in',['sorgu','tesdiqlenib']).onSnapshot(snap=>{
-    reviewQaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    render();
-  });
-  db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
-    qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(q=>q.qType==='istehsalat');
-    render();
+  // Yalnız bu istifadəçinin özünün əlavə etdiyi qaimələr canlı izlənir (problem bildirişi üçün) — bütün kolleksiya deyil.
+  db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).onSnapshot(snap=>{
+    myQaimeler = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(q=>q.qType==='istehsalat');
     checkNotifications();
+    if(curNav==='stats') render();
   });
   loadPending();
   render();
@@ -195,7 +244,7 @@ function setNav(n){ curNav=n; render(); }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
-function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
+function isTecili(q){ return q.status!=='medaxil' && (q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3)); }
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
 function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğuda':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
 
@@ -216,19 +265,40 @@ function render(){
 }
 
 function viewSorgu(){
-  const list = reviewQaimeler.filter(q=>q.status==='sorgu').slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
-  return `<div class="card"><h3>Sorğu (${list.length})</h3>
-    ${list.map(q=>reviewRow(q,true)).join('') || '<div class="small">Yoxdur</div>'}</div>`;
+  const search = document.getElementById('sorguSearch')?.value || '';
+  const wf = ()=> db.collection('qaimeler').where('status','==','sorgu');
+  let list, pager='';
+  if(search){ list = searchList('ist_sorgu_search', wf, search); }
+  else{ if(!pg['ist_sorgu']) pgLoad('ist_sorgu', wf); list = (pg['ist_sorgu']&&pg['ist_sorgu'].rows)||[]; pager = pgButtons('ist_sorgu'); }
+  reviewQaimeler = list;
+  return `<div class="card"><h3>Sorğu</h3>
+    <input id="sorguSearch" placeholder="Axtar (kim üçün / qaimə № / anbar)" value="${search}" oninput="render()">
+    <div style="margin-top:10px">${list.map(q=>reviewRow(q,true)).join('') || '<div class="small">Yoxdur</div>'}</div>
+    ${pager}</div>`;
 }
 function viewTesdiqlenib(){
-  const list = reviewQaimeler.filter(q=>q.status==='tesdiqlenib').slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
-  return `<div class="card"><h3>Təsdiq edilib (${list.length})</h3>
-    ${list.map(q=>reviewRow(q,false)).join('') || '<div class="small">Yoxdur</div>'}</div>`;
+  const search = document.getElementById('tesdSearch')?.value || '';
+  const wf = ()=> db.collection('qaimeler').where('status','==','tesdiqlenib');
+  let list, pager='';
+  if(search){ list = searchList('ist_tesd_search', wf, search); }
+  else{ if(!pg['ist_tesd']) pgLoad('ist_tesd', wf); list = (pg['ist_tesd']&&pg['ist_tesd'].rows)||[]; pager = pgButtons('ist_tesd'); }
+  reviewQaimeler = list;
+  return `<div class="card"><h3>Təsdiq edilib</h3>
+    <input id="tesdSearch" placeholder="Axtar (kim üçün / qaimə № / anbar)" value="${search}" oninput="render()">
+    <div style="margin-top:10px">${list.map(q=>reviewRow(q,false)).join('') || '<div class="small">Yoxdur</div>'}</div>
+    ${pager}</div>`;
 }
 function viewMedaxilEdilib(){
-  const list = qaimeler.filter(q=>q.status==='medaxil').slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
-  return `<div class="card"><h3>Mədaxil edilib (${list.length})</h3>
-    ${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}</div>`;
+  const search = document.getElementById('medSearch')?.value || '';
+  const wf = ()=> db.collection('qaimeler').where('status','==','medaxil').where('qType','==','istehsalat');
+  let list, pager='';
+  if(search){ list = searchList('ist_med_search', wf, search); }
+  else{ if(!pg['ist_med']) pgLoad('ist_med', wf); list = (pg['ist_med']&&pg['ist_med'].rows)||[]; pager = pgButtons('ist_med'); }
+  qaimeler = list;
+  return `<div class="card"><h3>Mədaxil edilib</h3>
+    <input id="medSearch" placeholder="Axtar (kim üçün / qaimə № / anbar)" value="${search}" oninput="render()">
+    <div style="margin-top:10px">${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}</div>
+    ${pager}</div>`;
 }
 function reviewRow(q, isSorgu){
   const orig = q.photos||[];
@@ -244,9 +314,15 @@ function reviewRow(q, isSorgu){
     ${isSorgu?`<button style="margin-top:6px" onclick="confirmSorgu('${q.id}')">Təsdiq edildi</button>`:`<button class="sec" style="margin-top:6px" onclick="revertTesdiq('${q.id}')">Geri çək</button>`}
   </div>`;
 }
-async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib'}); }
-async function revertTesdiq(id){ await db.collection('qaimeler').doc(id).update({status:'sorgu'}); }
-  const anbarList = [...new Set(qaimeler.map(q=>q.anbar).filter(Boolean))];
+async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib'}); pg={}; }
+async function revertTesdiq(id){
+  const q = reviewQaimeler.find(x=>x.id===id) || qaimeler.find(x=>x.id===id);
+  if(q && q.status==='medaxil'){ alert('Mədaxil edilmiş qaimə geri çəkilə bilməz.'); return; }
+  await db.collection('qaimeler').doc(id).update({status:'sorgu'});
+  pg={};
+}
+function viewAddForm(){
+  const anbarList = [...new Set(myQaimeler.map(q=>q.anbar).filter(Boolean))];
   return `<div class="card">
     <h3>Qaimə Əlavə Et</h3>
     <label>Sifariş Verən</label>
@@ -360,16 +436,20 @@ async function submitQaime(){
 
 function viewMine(){
   const search = document.getElementById('istSearch')?.value || '';
-  let mine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
-  if(search) mine = mine.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
+  const wf = ()=> db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).where('qType','==','istehsalat');
+  let mine, pager='';
+  if(search){ mine = searchList('ist_mine_search', wf, search); }
+  else{ if(!pg['ist_mine']) pgLoad('ist_mine', wf); mine = (pg['ist_mine']&&pg['ist_mine'].rows)||[]; pager = pgButtons('ist_mine'); }
+  qaimeler = mine;
   const pend = pendingQaimeler;
-  return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>
+  return `<div class="card"><h3>Mənim Qaimlərim${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>
     <input id="istSearch" placeholder="Axtar (kim üçün / qaimə № / anbar)" value="${search}" oninput="render()">
     <div class="line-grid small" style="font-weight:bold;padding:4px 8px">
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>Ödəniş</span><span>Status</span>
     </div>
     ${pend.map(r=>pendingRowHtml(r)).join('')}
-    ${mine.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}</div>`;
+    ${mine.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}
+    ${pager}</div>`;
 }
 function pendingRowHtml(rec){
   return `<div class="row tecili">
@@ -448,6 +528,7 @@ async function saveEdit(id){
     qeyd: document.getElementById('e_qeyd').value.trim(),
     tecili: document.getElementById('e_tecili').checked
   });
+  pg={};
   closeModal();
 }
 const CL_API_KEY = '947222283424236', CL_API_SECRET = 'oDGIa0KI-R6KhOazJR7g5sWMzX0';
@@ -480,6 +561,7 @@ async function deleteQaime(id){
   let failed = [];
   if(q) failed = await deleteQaimePhotos(q);
   await db.collection('qaimeler').doc(id).delete();
+  pg={};
   if(failed.length) alert(`Diqqət: ${failed.length} şəkil Cloudinary-dən silinmədi. Admin panelinə qeyd olundu.`);
 }
 
@@ -557,7 +639,7 @@ async function saveResolve(id){
 }
 
 function checkNotifications(){
-  const mine = qaimeler.filter(q=>hasOpenProblem(q) && q.sifarisVeren===currentUser.name && !dismissed.has(q.id));
+  const mine = myQaimeler.filter(q=>hasOpenProblem(q) && !dismissed.has(q.id));
   if(mine.length>0 && !document.getElementById('modalRoot').innerHTML){
     pendingNotifIds = mine.map(q=>q.id);
     document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
@@ -573,19 +655,29 @@ function dismissNotifications(){
   closeModal();
 }
 
+let statsData = null;
 function viewStats(){
-  const total = qaimeler.length;
+  if(!statsData){
+    statsData = {loading:true};
+    db.collection('qaimeler').where('qType','==','istehsalat').get().then(snap=>{
+      statsData = {loading:false, list: snap.docs.map(d=>({id:d.id,...d.data()}))};
+      if(curNav==='stats') render();
+    });
+  }
+  if(statsData.loading) return '<div class="card"><div class="small">Yüklənir...</div></div>';
+  const all = statsData.list;
+  const total = all.length;
   const byStatus = {yeni:0, islemede:0, medaxil:0};
-  qaimeler.forEach(q=>byStatus[q.status]=(byStatus[q.status]||0)+1);
-  const problemli = qaimeler.filter(hasOpenProblem).length;
-  const tecili = qaimeler.filter(isTecili).length;
+  all.forEach(q=>byStatus[q.status]=(byStatus[q.status]||0)+1);
+  const problemli = all.filter(hasOpenProblem).length;
+  const tecili = all.filter(isTecili).length;
 
   const days = [...Array(7)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return d; }).reverse();
-  const dayCounts = days.map(d=> qaimeler.filter(q=>{ if(!q.createdAt) return false; const qd=q.createdAt.toDate?q.createdAt.toDate():new Date(q.createdAt); return qd.toDateString()===d.toDateString(); }).length);
+  const dayCounts = days.map(d=> all.filter(q=>{ if(!q.createdAt) return false; const qd=q.createdAt.toDate?q.createdAt.toDate():new Date(q.createdAt); return qd.toDateString()===d.toDateString(); }).length);
   const maxC = Math.max(1,...dayCounts);
   const chart = `<div class="bar-chart">${days.map((d,i)=>`<div class="small">${d.toLocaleDateString('az-AZ',{weekday:'short',day:'numeric'})}</div><div class="bg"><div class="fg" style="width:${(dayCounts[i]/maxC*100)||2}%">${dayCounts[i]}</div></div>`).join('')}</div>`;
 
-  const mine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
+  const mine = all.filter(q=>q.sifarisVeren===currentUser.name);
   const today = mine.filter(q=>isToday(q.createdAt)).length;
 
   return `<div class="card"><h3>Ümumi Vəziyyət (İstehsalat)</h3>
