@@ -87,11 +87,12 @@ let qaimeler = [];
 let curNav = 'medaxil';
 
 function isIlyas(){ return currentUser && currentUser.username === 'ilyas'; }
+function myScope(list){ return currentUser.isKorUser ? list.filter(q=>q.kimUcunId===currentUser.korUserId) : list; }
 function shouldBlur(){ return !isIlyas(); }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
-function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':'Mədaxil edildi'); }
+function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğuda':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
 function dlUrl(u){ return u.replace('/upload/','/upload/fl_attachment/'); }
 function printImage(url){
   let f = document.getElementById('printFrame');
@@ -118,6 +119,13 @@ function photoThumb(url, allPhotos, size, blurable){
 async function doLogin(){
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value.trim();
+  const kSnap = await db.collection('korusers').doc(u).get();
+  if(kSnap.exists && p==='7777'){
+    currentUser = {username:u, name:kSnap.data().name, isKorUser:true, korUserId:u};
+    sessionStorage.setItem('korpcu', JSON.stringify(currentUser));
+    boot();
+    return;
+  }
   const snap = await db.collection('users').doc(u).get();
   const d = snap.exists ? snap.data() : null;
   const roles = d ? (d.roles || (d.role?[d.role]:[])) : [];
@@ -140,7 +148,7 @@ function boot(){
   document.getElementById('userInfo').onclick = logout;
   document.getElementById('navTabs').innerHTML = [['yeni','Yeni'],['medaxil','Mədaxil Olunub'],['islemede','İşlənilir'],['istehsalat','İstehsalat']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
-  setupPush(db, currentUser.username);
+  setupPush(db, currentUser.username, currentUser.isKorUser?'korusers':undefined);
   db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
     render();
@@ -161,7 +169,7 @@ function render(){
 
 function viewYeni(){
   const search = document.getElementById('korpSearch4')?.value || '';
-  let list = qaimeler.filter(q=>q.status==='yeni' && q.qType!=='istehsalat');
+  let list = myScope(qaimeler.filter(q=>q.status==='yeni' && q.qType!=='istehsalat'));
   if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
   return `<div class="card">
@@ -189,7 +197,7 @@ function rowYeni(q){
 
 function viewMedaxil(){
   const search = document.getElementById('korpSearch')?.value || '';
-  let list = qaimeler.filter(q=>q.status==='medaxil' && q.qType!=='istehsalat');
+  let list = myScope(qaimeler.filter(q=>q.status==='medaxil' && q.qType!=='istehsalat'));
   if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
   return `<div class="card">
@@ -240,7 +248,7 @@ function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle(
 
 function viewIslemede(){
   const search = document.getElementById('korpSearch2')?.value || '';
-  let list = qaimeler.filter(q=>q.status==='islemede' && q.qType!=='istehsalat');
+  let list = myScope(qaimeler.filter(q=>['islemede','sorgu','tesdiqlenib'].includes(q.status) && q.qType!=='istehsalat'));
   if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (b.tookAt?.toMillis?.()||0)-(a.tookAt?.toMillis?.()||0));
   return `<div class="card">
@@ -260,7 +268,7 @@ function rowIslemede(q){
       <span>${q.anbar}</span>
       <span>${q.kimUcun}</span>
       <span>${q.isleyen||''}</span>
-      <span class="small">${fmtDate(q.createdAt)}</span>
+      <span class="small">${statusLabel(q.status)}</span>
     </div>
     <div class="line-extras">${orig[0]?photoThumb(orig[0],orig):''}</div>
   </div>`;
@@ -268,7 +276,7 @@ function rowIslemede(q){
 
 function viewIstehsalat(){
   const search = document.getElementById('korpSearch3')?.value || '';
-  let list = qaimeler.filter(q=>q.qType==='istehsalat');
+  let list = myScope(qaimeler.filter(q=>q.qType==='istehsalat'));
   if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
   return `<div class="card">
