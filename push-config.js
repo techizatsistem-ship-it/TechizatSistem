@@ -32,20 +32,18 @@ async function setupPush(db, username, collName) {
     }
     const subJson = sub.toJSON();
 
-    if (coll === 'users') {
-      // Bu cihazın abunəliyi başqa istifadəçilərin siyahısında qalıbsa, oradan təmizlə —
-      // eyni telefonda fərqli hesablarla giriş edəndə bir cihaz yalnız CARİ istifadəçiyə aid olsun.
-      const prevOwners = await db.collection('users').where('pushSubs', 'array-contains', subJson).get();
-      const batch = db.batch();
-      let needsBatch = false;
+    const batch = db.batch();
+    let needsBatch = false;
+    for (const c of ['users', 'korusers']) {
+      const prevOwners = await db.collection(c).where('pushSubs', 'array-contains', subJson).get();
       prevOwners.forEach(doc => {
-        if (doc.id !== username) {
+        if (!(c === coll && doc.id === username)) {
           batch.update(doc.ref, { pushSubs: firebase.firestore.FieldValue.arrayRemove(subJson) });
           needsBatch = true;
         }
       });
-      if (needsBatch) await batch.commit();
     }
+    if (needsBatch) await batch.commit();
 
     await db.collection(coll).doc(username).update({
       pushSubs: firebase.firestore.FieldValue.arrayUnion(subJson)
@@ -109,5 +107,4 @@ async function sendPushToName(db, name, title, body) {
     console.error('Push göndərmə xətası:', e);
   }
 }
-
 
