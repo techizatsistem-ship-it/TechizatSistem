@@ -87,3 +87,4 @@ async function sendPushToName(db, name, title, body) {
     console.error('Push göndərmə xətası:', e);
   }
 }
+
