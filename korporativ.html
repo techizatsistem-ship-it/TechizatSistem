@@ -90,7 +90,7 @@ let curNav = 'medaxil';
 const PAGE_SIZE = 10;
 let pg = {};
 async function pgLoad(key, whereFn, page){
-  if(!pg[key]) pg[key] = {cursors:[null], mode:null, page:1};
+  if(!pg[key]) pg[key] = {cursors:[null], mode: currentUser.isKorUser?'fallback':null, page:1};
   const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1;
   try{
     if(st.mode==='fallback') throw 0;
@@ -440,6 +440,5 @@ function openViewer(photos, idx, blurable){
 </script>
 </body>
 </html>
-
 
 
