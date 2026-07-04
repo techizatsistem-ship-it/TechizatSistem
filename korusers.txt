@@ -1,0 +1,637 @@
+--- KORUSERS MƏLUMATLARI ---
+
+Document ID: 1
+Data: {
+  "name": "K - Mirsəməd Səlimov (1)"
+}
+-----------------------------------------
+Document ID: 100
+Data: {
+  "name": "OFİS -  (100)"
+}
+-----------------------------------------
+Document ID: 111
+Data: {
+  "name": "K - Nüşabə Həsənova (111)"
+}
+-----------------------------------------
+Document ID: 16
+Data: {
+  "name": "K - Emin Əhmədov (16)"
+}
+-----------------------------------------
+Document ID: 18
+Data: {
+  "name": "K - Nuran İsmayılova (Ofisait WEB) (18)"
+}
+-----------------------------------------
+Document ID: 208
+Data: {
+  "name": "K - Elnur Məmmədov (208)"
+}
+-----------------------------------------
+Document ID: 211
+Data: {
+  "name": "K - VAKANSİYA (211)"
+}
+-----------------------------------------
+Document ID: 212
+Data: {
+  "name": "K - Anar Əmirzadə (212)"
+}
+-----------------------------------------
+Document ID: 214
+Data: {
+  "name": "K - Rəmalə Cəlilova (214)"
+}
+-----------------------------------------
+Document ID: 215
+Data: {
+  "name": "K - Firəngiz Şahbazova (215)"
+}
+-----------------------------------------
+Document ID: 220
+Data: {
+  "name": "K - Fidan Ağayeva (220)"
+}
+-----------------------------------------
+Document ID: 221
+Data: {
+  "name": "K - Samir Mirzəyev (221)"
+}
+-----------------------------------------
+Document ID: 222
+Data: {
+  "name": "K - Gözəl Musazadə (222)"
+}
+-----------------------------------------
+Document ID: 223
+Data: {
+  "name": "K - Ramil Qədəmullazadə (223)"
+}
+-----------------------------------------
+Document ID: 224
+Data: {
+  "name": "K - İslam Əsgərov (224)"
+}
+-----------------------------------------
+Document ID: 240
+Data: {
+  "name": "K - Taleh Tacibov (240)"
+}
+-----------------------------------------
+Document ID: 241
+Data: {
+  "name": "K - Vakansiya (241)"
+}
+-----------------------------------------
+Document ID: 242
+Data: {
+  "name": "K - Rüfət Bənnəyev (242)"
+}
+-----------------------------------------
+Document ID: 244
+Data: {
+  "name": "K - Turan Abdullayeva (244)"
+}
+-----------------------------------------
+Document ID: 245
+Data: {
+  "name": "K - Samir Nəsirov (245)"
+}
+-----------------------------------------
+Document ID: 246
+Data: {
+  "name": "K - Pərvanə Nuraliyeva (246)"
+}
+-----------------------------------------
+Document ID: 248
+Data: {
+  "name": "K - Fərid (248)"
+}
+-----------------------------------------
+Document ID: 250
+Data: {
+  "name": "K - Sevda Məmmədli (250)"
+}
+-----------------------------------------
+Document ID: 251
+Data: {
+  "name": "K - Ülkər Seyfullayeva (251)"
+}
+-----------------------------------------
+Document ID: 252
+Data: {
+  "name": "K - Nurlanə Əsədova (252)"
+}
+-----------------------------------------
+Document ID: 254
+Data: {
+  "name": "K - Ayşən Quliyeva (254)"
+}
+-----------------------------------------
+Document ID: 255
+Data: {
+  "name": "K - Elşən Salahov (255)"
+}
+-----------------------------------------
+Document ID: 256
+Data: {
+  "name": "K - Kənan Qarazadə (256)"
+}
+-----------------------------------------
+Document ID: 257
+Data: {
+  "name": "K - Optimal (257)"
+}
+-----------------------------------------
+Document ID: 258
+Data: {
+  "name": "K - Şəbnəm Ağazadə (258)"
+}
+-----------------------------------------
+Document ID: 259
+Data: {
+  "name": "K - Emil Hacıyev (259)"
+}
+-----------------------------------------
+Document ID: 260
+Data: {
+  "name": "K - Nurlan Rəhimov (260)"
+}
+-----------------------------------------
+Document ID: 262
+Data: {
+  "name": "K - Orxan Babalı (262)"
+}
+-----------------------------------------
+Document ID: 50
+Data: {
+  "name": "K - Əhmədağa Piriyev (50)"
+}
+-----------------------------------------
+Document ID: 53
+Data: {
+  "name": "K - Turanə Əmrahova (53)"
+}
+-----------------------------------------
+Document ID: 61
+Data: {
+  "name": "K - Dilbər Seyidova (61)"
+}
+-----------------------------------------
+Document ID: 64
+Data: {
+  "name": "K - Mirzəli Quliyev (64)"
+}
+-----------------------------------------
+Document ID: 67
+Data: {
+  "name": "K - Sevil Hüseynli (67)"
+}
+-----------------------------------------
+Document ID: 68
+Data: {
+  "name": "K - Təhminə İsmayılova (68)"
+}
+-----------------------------------------
+Document ID: 70
+Data: {
+  "name": "K - Teymur Babayev (70)"
+}
+-----------------------------------------
+Document ID: 71
+Data: {
+  "name": "K - Hüseyn Cəbiyev (71)"
+}
+-----------------------------------------
+Document ID: 72
+Data: {
+  "name": "K - Şövkət Əsədova (72)"
+}
+-----------------------------------------
+Document ID: 73
+Data: {
+  "name": "K - Xəqani Maqsudov (73)"
+}
+-----------------------------------------
+Document ID: 74
+Data: {
+  "name": "K - Fail Orucov (74)"
+}
+-----------------------------------------
+Document ID: 75
+Data: {
+  "name": "K - Sənan Xudiyev (75)"
+}
+-----------------------------------------
+Document ID: 76
+Data: {
+  "name": "K - Rəna Həsənli (76)"
+}
+-----------------------------------------
+Document ID: 77
+Data: {
+  "name": "K - Lalə Alan-Əliyeva (77)"
+}
+-----------------------------------------
+Document ID: 78
+Data: {
+  "name": "K - Ümid Qasımzadə (78)"
+}
+-----------------------------------------
+Document ID: 79
+Data: {
+  "name": "K - Rəşad Xudiyev (79)"
+}
+-----------------------------------------
+Document ID: 88
+Data: {
+  "name": "K - Barat Əlizadə (88)"
+}
+-----------------------------------------
+Document ID: 93
+Data: {
+  "name": "K - Vakansiya (93)"
+}
+-----------------------------------------
+Document ID: P19
+Data: {
+  "name": "OF - ƏHMƏDLİ KÖHNƏ (P19)"
+}
+-----------------------------------------
+Document ID: P20
+Data: {
+  "name": "OF - Problemlilər (P20)"
+}
+-----------------------------------------
+Document ID: P22
+Data: {
+  "name": "K - (Problemli müştərilər) (P22)"
+}
+-----------------------------------------
+Document ID: SM04
+Data: {
+  "name": "K - Rəmalə Cəlilova (SM04)"
+}
+-----------------------------------------
+Document ID: SM10
+Data: {
+  "name": "K - Nicat Abdullayev (SM10)"
+}
+-----------------------------------------
+Document ID: SM30
+Data: {
+  "name": "OF - İlkin Rufullayev (SM30)"
+}
+-----------------------------------------
+Document ID: SM32
+Data: {
+  "name": "OF - Rasim Abbasov (SM32)"
+}
+-----------------------------------------
+Document ID: SM34
+Data: {
+  "name": "OF - Vidadi Rəhimov (SM34)"
+}
+-----------------------------------------
+Document ID: SM35
+Data: {
+  "name": "OF - Mağazaları (SM35)"
+}
+-----------------------------------------
+Document ID: SM36
+Data: {
+  "name": "OF - Azər Eminov (SM36)"
+}
+-----------------------------------------
+Document ID: SM38
+Data: {
+  "name": "OF - Babək Həsənov (SM38)"
+}
+-----------------------------------------
+Document ID: SM40
+Data: {
+  "name": "K - Vakansiya (SM40)"
+}
+-----------------------------------------
+Document ID: SM41
+Data: {
+  "name": "OF - Elşad Cəfərov (SM41)"
+}
+-----------------------------------------
+Document ID: SM42
+Data: {
+  "name": "K - Fazil Məmmədov (SM42)"
+}
+-----------------------------------------
+Document ID: SM44
+Data: {
+  "name": "K -  (SM44)"
+}
+-----------------------------------------
+Document ID: SM45
+Data: {
+  "name": "K - Tural Bayramlı (SM45)"
+}
+-----------------------------------------
+Document ID: SM46
+Data: {
+  "name": "K - Tural Hacıyev (SM46)"
+}
+-----------------------------------------
+Document ID: SM50
+Data: {
+  "name": "OF - Nicat Ibrahimov (SM50)"
+}
+-----------------------------------------
+Document ID: ST001
+Data: {
+  "name": "OF - ELMLƏR (ST001)"
+}
+-----------------------------------------
+Document ID: ST002
+Data: {
+  "name": "OF - 46170 (ST002)"
+}
+-----------------------------------------
+Document ID: ST003
+Data: {
+  "name": "OF - DİLARƏ ƏLİYEVA 237/14 (ST003)"
+}
+-----------------------------------------
+Document ID: ST004
+Data: {
+  "name": "OF - ŞAHBAZOV (ST004)"
+}
+-----------------------------------------
+Document ID: ST005
+Data: {
+  "name": "OF - QUICKS (ST005)"
+}
+-----------------------------------------
+Document ID: ST006
+Data: {
+  "name": "OF - SƏDƏRƏK (ST006)"
+}
+-----------------------------------------
+Document ID: ST007
+Data: {
+  "name": "TS - HƏMİDƏ DADAŞOVA (ST007)"
+}
+-----------------------------------------
+Document ID: ST008
+Data: {
+  "name": "OF - 8-Cİ KM/85 (ST008)"
+}
+-----------------------------------------
+Document ID: ST009
+Data: {
+  "name": "OF - 8-Cİ KM/390 (ST009)"
+}
+-----------------------------------------
+Document ID: ST010
+Data: {
+  "name": "OF - VAĞZAL (ST010)"
+}
+-----------------------------------------
+Document ID: ST011
+Data: {
+  "name": "OF - BİNƏ QƏSƏBƏSİ (ST011)"
+}
+-----------------------------------------
+Document ID: ST012
+Data: {
+  "name": "OF - ƏHMƏDLİ (ST012)"
+}
+-----------------------------------------
+Document ID: ST013
+Data: {
+  "name": "OF - SUMQAYIT (ST013)"
+}
+-----------------------------------------
+Document ID: ST014
+Data: {
+  "name": "OF - HƏZİ ASLANOV (ST014)"
+}
+-----------------------------------------
+Document ID: ST015
+Data: {
+  "name": "OF - BAKIXANOV (ST015)"
+}
+-----------------------------------------
+Document ID: ST016
+Data: {
+  "name": "OF - LƏNKƏRAN (ST016)"
+}
+-----------------------------------------
+Document ID: ST017
+Data: {
+  "name": "OF - Mingəçevir (ST017)"
+}
+-----------------------------------------
+Document ID: ST019
+Data: {
+  "name": "OF - ULDUZ- ONLINE (ST019)"
+}
+-----------------------------------------
+Document ID: ST020
+Data: {
+  "name": "OF - TOVUZ (ST020)"
+}
+-----------------------------------------
+Document ID: ST021
+Data: {
+  "name": "OF - BƏRDƏ (ST021)"
+}
+-----------------------------------------
+Document ID: ST022
+Data: {
+  "name": "OF - GÖYÇAY (ST022)"
+}
+-----------------------------------------
+Document ID: ST023
+Data: {
+  "name": "OF - ŞAMAXİNKA 1 (ST023)"
+}
+-----------------------------------------
+Document ID: ST024
+Data: {
+  "name": "OF - GƏNCƏ (ST024)"
+}
+-----------------------------------------
+Document ID: ST025
+Data: {
+  "name": "OF - SUMQAYIT 2 (ST025)"
+}
+-----------------------------------------
+Document ID: ST026
+Data: {
+  "name": "OF - NEFTÇİLƏR (ST026)"
+}
+-----------------------------------------
+Document ID: ST027
+Data: {
+  "name": "OF - SUMQAYIT 3 (ST027)"
+}
+-----------------------------------------
+Document ID: ST028
+Data: {
+  "name": "OF - İNŞAATÇILAR (ST028)"
+}
+-----------------------------------------
+Document ID: ST029
+Data: {
+  "name": "OF - XALQLAR (ST029)"
+}
+-----------------------------------------
+Document ID: ST030
+Data: {
+  "name": "OF - NƏSİMİ (ST030)"
+}
+-----------------------------------------
+Document ID: ST031
+Data: {
+  "name": "OF - XIRDALAN-1 (ST031)"
+}
+-----------------------------------------
+Document ID: ST032
+Data: {
+  "name": "OF - XIRDALAN-2 (ST032)"
+}
+-----------------------------------------
+Document ID: ST033
+Data: {
+  "name": "OF - S. RÜSTƏM (ST033)"
+}
+-----------------------------------------
+Document ID: ST034
+Data: {
+  "name": "OF - NƏRİMANOV (ST034)"
+}
+-----------------------------------------
+Document ID: ST035
+Data: {
+  "name": "OF - Qara Qarayev (ST035)"
+}
+-----------------------------------------
+Document ID: ST036
+Data: {
+  "name": "OF - GƏNCƏ - 2 (ST036)"
+}
+-----------------------------------------
+Document ID: ST038
+Data: {
+  "name": "OF - ŞƏRİFZADƏ (ST038)"
+}
+-----------------------------------------
+Document ID: ST039
+Data: {
+  "name": "K - Esmira Abdullayeva (ST039)"
+}
+-----------------------------------------
+Document ID: ST040
+Data: {
+  "name": "K - Tural Bayramlı (ST040)"
+}
+-----------------------------------------
+Document ID: ST041
+Data: {
+  "name": "K - Tural Hacıyev (ST041)"
+}
+-----------------------------------------
+Document ID: ST042
+Data: {
+  "name": "OF - Şəmkir (ST042)"
+}
+-----------------------------------------
+Document ID: ST043
+Data: {
+  "name": "K - Elmira Axundova (ST043)"
+}
+-----------------------------------------
+Document ID: ST044
+Data: {
+  "name": "OF - ŞAMAXİNKA 2 (ST044)"
+}
+-----------------------------------------
+Document ID: ST045
+Data: {
+  "name": "OF - Mingəçevir - 2 (ST045)"
+}
+-----------------------------------------
+Document ID: ST046
+Data: {
+  "name": "OF - NƏRİMANOV 2 (ST046)"
+}
+-----------------------------------------
+Document ID: ST047
+Data: {
+  "name": "OF - AĞDAŞ (ST047)"
+}
+-----------------------------------------
+Document ID: ST048
+Data: {
+  "name": "OF - Xankəndi (ST048)"
+}
+-----------------------------------------
+Document ID: ST049
+Data: {
+  "name": "K - Nuranə Rzazadə (ST049)"
+}
+-----------------------------------------
+Document ID: ST050
+Data: {
+  "name": "OF - GÜNƏŞLİ (ST050)"
+}
+-----------------------------------------
+Document ID: ST051
+Data: {
+  "name": "OF - AYNA SULTANOVA (ST051)"
+}
+-----------------------------------------
+Document ID: ST052
+Data: {
+  "name": "OF - Nuran İsmayılova (ST052)"
+}
+-----------------------------------------
+Document ID: ST053
+Data: {
+  "name": "OF - QAZAX (ST053)"
+}
+-----------------------------------------
+Document ID: ST054
+Data: {
+  "name": "OF - ŞAMAXI (ST054)"
+}
+-----------------------------------------
+Document ID: ST055
+Data: {
+  "name": "K - Qaim Cəfərli (ST055)"
+}
+-----------------------------------------
+Document ID: ST056
+Data: {
+  "name": "OF - SUMQAYIT 4 (ST056)"
+}
+-----------------------------------------
+Document ID: ST057
+Data: {
+  "name": "OF - Qovlar (ST057)"
+}
+-----------------------------------------
+Document ID: ST058
+Data: {
+  "name": "OF - İsmayillı (ST058)"
+}
+-----------------------------------------
+Document ID: ST059
+Data: {
+  "name": "OF - BƏRDƏ - 2 (ST059)"
+}
+-----------------------------------------
+Document ID: TS02
+Data: {
+  "name": "TS - Ülkər Gürzalıyeva (TS02)"
+}
+-----------------------------------------
