@@ -108,6 +108,7 @@ let pendingNotifIds = [];
 let pickedFiles = [];
 let pendingQaimeler = [];
 let sending = false;
+let inFlight = new Set();
 let reviewQaimeler = [];
 
 // ---- Səhifələmə (Firestore read limitini azaltmaq üçün: hər tabda max 10 qaimə, lazım olanda çəkilir) ----
@@ -168,10 +169,19 @@ async function idbAll(){ const d=await idbOpen(); return new Promise((res,rej)=>
 async function loadPending(){ pendingQaimeler = (await idbAll()).filter(r=>r.qType==='istehsalat'); render(); trySendAll(); }
 async function trySendOne(rec){
   if(!rec) return false;
+  if(inFlight.has(rec.localId)) return false;
+  inFlight.add(rec.localId);
   try{
+    const already = await db.collection('qaimeler').where('localId','==', rec.localId).limit(1).get();
+    if(!already.empty){
+      await idbDelete(rec.localId);
+      pendingQaimeler = pendingQaimeler.filter(x=>x.localId!==rec.localId);
+      pg={}; statsData=null;
+      render();
+      return true;
+    }
     const wm = [`Sifarişçi: ${rec.sifarisVeren}`, `Anbar: ${rec.anbar}`, `Kim üçün: ${rec.kimUcun}`, `Ödəniş: ${rec.odenisTipi}`];
-    const photos = [];
-    for(const f of rec.files){ const blob = await compressImage(f, 1200, 0.7, wm); photos.push(await uploadToCloudinary(blob)); }
+    const photos = await Promise.all(rec.files.map(async f=>{ const blob = await compressImage(f, 1200, 0.7, wm); return uploadToCloudinary(blob); }));
     const no = await db.runTransaction(async t=>{
       const ref = db.collection('meta').doc('counter');
       const snap = await t.get(ref);
@@ -180,7 +190,7 @@ async function trySendOne(rec){
       return val;
     });
     await db.collection('qaimeler').add({
-      no, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, kimUcunId: rec.kimUcunId||null, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
+      no, localId: rec.localId, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, kimUcunId: rec.kimUcunId||null, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
       tecili: rec.tecili, photos, photosUploading:false, status:'yeni', isleyen:null, problem:null,
       medaxilPhotos: [], medaxilPhotosUploading:false, qType:'istehsalat',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(), medaxilNo:null
@@ -192,6 +202,7 @@ async function trySendOne(rec){
     render();
     return true;
   }catch(e){ console.error(e); return false; }
+  finally{ inFlight.delete(rec.localId); }
 }
 async function trySendAll(){
   if(sending || !navigator.onLine) return;
@@ -200,7 +211,7 @@ async function trySendAll(){
   sending = false;
 }
 window.addEventListener('online', trySendAll);
-setInterval(trySendAll, 20000);
+setInterval(trySendAll, 8000);
 
 async function doLogin(){
   const u = document.getElementById('loginUser').value.trim();
@@ -255,7 +266,7 @@ function render(){
   const mineBtn = document.querySelector('#navTabs button[data-n="mine"]');
   if(mineBtn) mineBtn.innerHTML = 'Mənim Qaimlərim' + (pendingQaimeler.length?` <span class="badge">${pendingQaimeler.length}</span>`:'');
   const m = document.getElementById('main');
-  if(curNav==='add') m.innerHTML = viewAddForm();
+  if(curNav==='add'){ if(!document.getElementById('f_anbar')) m.innerHTML = viewAddForm(); }
   else if(curNav==='mine') m.innerHTML = viewMine();
   else if(curNav==='sorgu') m.innerHTML = viewSorgu();
   else if(curNav==='tesdiqlenib') m.innerHTML = viewTesdiqlenib();
