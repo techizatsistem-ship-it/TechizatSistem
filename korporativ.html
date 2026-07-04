@@ -86,12 +86,64 @@ let currentUser = JSON.parse(sessionStorage.getItem('korpcu')||'null');
 let qaimeler = [];
 let curNav = 'medaxil';
 
+// ---- Səhifələmə (Firestore read limitini azaltmaq üçün: hər tabda max 10 qaimə, lazım olanda çəkilir) ----
+const PAGE_SIZE = 10;
+let pg = {};
+async function pgLoad(key, whereFn, page){
+  if(!pg[key]) pg[key] = {cursors:[null], mode:null, page:1};
+  const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1;
+  try{
+    if(st.mode==='fallback') throw 0;
+    for(let p=1;p<=page;p++){
+      if(st.cursors[p]!==undefined) continue;
+      let q = whereFn().orderBy('createdAt','desc').limit(PAGE_SIZE);
+      if(st.cursors[p-1]) q = whereFn().orderBy('createdAt','desc').startAfter(st.cursors[p-1]).limit(PAGE_SIZE);
+      const snap = await q.get();
+      st.cursors[p] = snap.docs.length ? snap.docs[snap.docs.length-1] : (st.cursors[p-1]||null);
+      if(p===page) st.rows = snap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    if(st.total==null){ try{ const c = await whereFn().count().get(); st.total = c.data().count; }catch(e){ st.total=st.rows?st.rows.length:0; } }
+    st.mode = 'index';
+  }catch(e){
+    if(e) console.warn('Pagination indeksi yoxdur, ehtiyat rejiminə keçildi:', e);
+    if(!st.all){
+      const snap = await whereFn().get();
+      st.all = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+    }
+    st.total = st.all.length;
+    st.mode = 'fallback';
+    st.rows = st.all.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  }
+  render();
+}
+function pgGoto(key, page){ pgLoad(key, pg[key].wf, page); }
+function pgButtons(key){
+  const st = pg[key];
+  if(!st || !st.total || st.total<=PAGE_SIZE) return '';
+  const pages = Math.ceil(st.total/PAGE_SIZE);
+  let h = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">';
+  for(let i=1;i<=pages;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+  return h+'</div>';
+}
+function searchList(key, whereFn, search){
+  if(!pg[key] || pg[key].mode!=='search'){
+    if(!pg[key]){ pg[key] = {mode:'search'}; whereFn().get().then(snap=>{ pg[key].all = snap.docs.map(d=>({id:d.id,...d.data()})); render(); }); }
+  }
+  let list = (pg[key] && pg[key].all) || [];
+  const s = search.toLowerCase();
+  list = list.filter(q=> String(q.no).includes(search) || (q.kimUcun||'').toLowerCase().includes(s) || (q.anbar||'').toLowerCase().includes(s));
+  return list.slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+}
+function scopedWf(baseWf){
+  return currentUser.isKorUser ? ()=> baseWf().where('kimUcunId','==',currentUser.korUserId) : baseWf;
+}
+
 function isIlyas(){ return currentUser && currentUser.username === 'ilyas'; }
 function myScope(list){ return currentUser.isKorUser ? list.filter(q=>q.kimUcunId===currentUser.korUserId) : list; }
 function shouldBlur(){ return !isIlyas(); }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
-function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
+function isTecili(q){ return q.status!=='medaxil' && (q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3)); }
 function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğuda':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
 function dlUrl(u){ return u.replace('/upload/','/upload/fl_attachment/'); }
 function printImage(url){
@@ -149,10 +201,6 @@ function boot(){
   document.getElementById('navTabs').innerHTML = [['yeni','Yeni'],['medaxil','Mədaxil Olunub'],['islemede','İşlənilir'],['istehsalat','İstehsalat']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   setupPush(db, currentUser.username, currentUser.isKorUser?'korusers':undefined);
-  db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
-    qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    render();
-  });
   render();
 }
 if(currentUser) boot();
@@ -169,9 +217,11 @@ function render(){
 
 function viewYeni(){
   const search = document.getElementById('korpSearch4')?.value || '';
-  let list = myScope(qaimeler.filter(q=>q.status==='yeni' && q.qType!=='istehsalat'));
-  if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
-  list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+  const wf = scopedWf(()=> db.collection('qaimeler').where('status','==','yeni'));
+  let list, pager='';
+  if(search){ list = searchList('kp_yeni_search', wf, search); }
+  else{ if(!pg['kp_yeni']) pgLoad('kp_yeni', wf); list = (pg['kp_yeni']&&pg['kp_yeni'].rows)||[]; pager = pgButtons('kp_yeni'); }
+  list = list.filter(q=>q.qType!=='istehsalat');
   return `<div class="card">
     <h3>Yeni (işlənməyi gözləyir)</h3>
     <input id="korpSearch4" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
@@ -179,6 +229,7 @@ function viewYeni(){
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>Sifarişçi</span><span>Tarix</span>
     </div>
     ${list.map(q=>rowYeni(q)).join('') || '<div class="small">Yoxdur</div>'}
+    ${pager}
   </div>`;
 }
 function rowYeni(q){
@@ -197,9 +248,11 @@ function rowYeni(q){
 
 function viewMedaxil(){
   const search = document.getElementById('korpSearch')?.value || '';
-  let list = myScope(qaimeler.filter(q=>q.status==='medaxil' && q.qType!=='istehsalat'));
-  if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
-  list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+  const wf = scopedWf(()=> db.collection('qaimeler').where('status','==','medaxil'));
+  let list, pager='';
+  if(search){ list = searchList('kp_medaxil_search', wf, search); }
+  else{ if(!pg['kp_medaxil']) pgLoad('kp_medaxil', wf); list = (pg['kp_medaxil']&&pg['kp_medaxil'].rows)||[]; pager = pgButtons('kp_medaxil'); }
+  list = list.filter(q=>q.qType!=='istehsalat');
   return `<div class="card">
     <h3>Mədaxil Olunmuş Qaimlər</h3>
     <input id="korpSearch" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
@@ -207,6 +260,7 @@ function viewMedaxil(){
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Mədaxil №</span>
     </div>
     ${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}
+    ${pager}
   </div>`;
 }
 function rowHtml(q){
