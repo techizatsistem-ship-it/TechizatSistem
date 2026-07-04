@@ -104,7 +104,7 @@ function kimFilter(){
   const q = document.getElementById('f_kim').value.trim().toLowerCase();
   const box = document.getElementById('kimBox');
   const list = korUsers.filter(u=>u.name.toLowerCase().includes(q));
-  box.innerHTML = list.map(u=>`<div style="padding:8px;cursor:pointer;border-bottom:1px solid #eee" onclick="kimPick('${u.id}',${JSON.stringify(u.name)})">${u.name}</div>`).join('') || '<div style="padding:8px;color:#999">Tapılmadı — yazdığınız qəbul olunacaq</div>';
+  box.innerHTML = list.map(u=>`<div style="padding:8px;cursor:pointer;border-bottom:1px solid #eee" onclick="kimPick('${u.id}',${JSON.stringify(u.name).replace(/"/g,'&quot;')})">${u.name}</div>`).join('') || '<div style="padding:8px;color:#999">Tapılmadı — yazdığınız qəbul olunacaq</div>';
   box.style.display = 'block';
 }
 function kimPick(id, name){
@@ -264,7 +264,7 @@ function setNav(n){ curNav=n; render(); }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
-function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
+function isTecili(q){ return q.status!=='medaxil' && (q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3)); }
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
 function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğuda':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
 function dlUrl(u){ return u.replace('/upload/','/upload/fl_attachment/'); }
