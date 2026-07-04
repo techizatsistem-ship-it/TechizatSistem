@@ -6,6 +6,7 @@
 <title>Qaimə Sistemi</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="korusers.js"></script>
 <script src="push-config.js"></script>
 <style>
 
@@ -97,8 +98,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-let korUsers = [];
-db.collection('korusers').get().then(s=>{ korUsers = s.docs.map(d=>({id:d.id, name:d.data().name})); });
+let korUsers = korusersData.map(u=>({id:u.id, name:u.name}));
 function kimFilter(){
   document.getElementById('f_kim_id').value='';
   const q = document.getElementById('f_kim').value.trim().toLowerCase();
