@@ -29,11 +29,43 @@ async function setupPush(db, username) {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
       });
     }
+    const subJson = sub.toJSON();
+
+    // Bu cihazın abunəliyi başqa istifadəçilərin siyahısında qalıbsa, oradan təmizlə —
+    // eyni telefonda fərqli hesablarla giriş edəndə bir cihaz yalnız CARİ istifadəçiyə aid olsun.
+    const prevOwners = await db.collection('users').where('pushSubs', 'array-contains', subJson).get();
+    const batch = db.batch();
+    let needsBatch = false;
+    prevOwners.forEach(doc => {
+      if (doc.id !== username) {
+        batch.update(doc.ref, { pushSubs: firebase.firestore.FieldValue.arrayRemove(subJson) });
+        needsBatch = true;
+      }
+    });
+    if (needsBatch) await batch.commit();
+
     await db.collection('users').doc(username).update({
-      pushSubs: firebase.firestore.FieldValue.arrayUnion(sub.toJSON())
+      pushSubs: firebase.firestore.FieldValue.arrayUnion(subJson)
     });
   } catch (e) {
     console.error('Push quraşdırma xətası:', e);
+  }
+}
+
+// Çıxış edəndə çağırılmalıdır: bu cihazın abunəliyini istifadəçinin siyahısından silir,
+// ki, o hesabdan çıxandan sonra ona artıq bildiriş getməsin.
+async function removePushOnLogout(db, username) {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+    if (!reg) return;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return;
+    await db.collection('users').doc(username).update({
+      pushSubs: firebase.firestore.FieldValue.arrayRemove(sub.toJSON())
+    });
+  } catch (e) {
+    console.error('Push silmə xətası:', e);
   }
 }
 
@@ -55,4 +87,3 @@ async function sendPushToName(db, name, title, body) {
     console.error('Push göndərmə xətası:', e);
   }
 }
-
