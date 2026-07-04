@@ -105,7 +105,6 @@ async function pgLoad(key, whereFn, page){
     if(st.total==null){ try{ const c = await whereFn().count().get(); st.total = c.data().count; }catch(e){ st.total=st.rows?st.rows.length:0; } }
     st.mode = 'index';
   }catch(e){
-    if(e) console.warn('Pagination indeksi yoxdur, ehtiyat rejiminə keçildi:', e);
     if(!st.all){
       const snap = await whereFn().get();
       st.all = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
@@ -198,7 +197,7 @@ function boot(){
   document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
   document.getElementById('userInfo').style.cursor='pointer';
   document.getElementById('userInfo').onclick = logout;
-  document.getElementById('navTabs').innerHTML = [['yeni','Yeni'],['medaxil','Mədaxil Olunub'],['islemede','İşlənilir'],['istehsalat','İstehsalat']]
+  document.getElementById('navTabs').innerHTML = [['yeni','Yeni'],['medaxil','Mədaxil Olunub'],['islemede','İşlənilir'],['sorgu','Sorğudadır'],['tesdiqlenib','Təsdiq edilib'],['istehsalat','İstehsalat']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   setupPush(db, currentUser.username, currentUser.isKorUser?'korusers':undefined);
   render();
@@ -211,7 +210,7 @@ function render(){
   const af = document.activeElement;
   const afId = af && af.id, afStart = af && af.selectionStart, afEnd = af && af.selectionEnd;
   document.querySelectorAll('#navTabs button').forEach(b=>b.classList.toggle('active', b.dataset.n===curNav));
-  document.getElementById('main').innerHTML = curNav==='yeni' ? viewYeni() : (curNav==='medaxil' ? viewMedaxil() : (curNav==='islemede' ? viewIslemede() : viewIstehsalat()));
+  document.getElementById('main').innerHTML = curNav==='yeni' ? viewYeni() : (curNav==='medaxil' ? viewMedaxil() : (curNav==='istehsalat' ? viewIstehsalat() : viewIslemede(curNav)));
   if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
 }
 
@@ -300,13 +299,14 @@ async function toggleChecked(id, val){
 }
 function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
 
-function viewIslemede(){
+function viewIslemede(st){
+  const titles = {islemede:'İşlənilir', sorgu:'Sorğudadır', tesdiqlenib:'Təsdiq edilib'};
   const search = document.getElementById('korpSearch2')?.value || '';
-  let list = myScope(qaimeler.filter(q=>['islemede','sorgu','tesdiqlenib'].includes(q.status) && q.qType!=='istehsalat'));
+  let list = myScope(qaimeler.filter(q=>q.status===st && q.qType!=='istehsalat'));
   if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (b.tookAt?.toMillis?.()||0)-(a.tookAt?.toMillis?.()||0));
   return `<div class="card">
-    <h3>İşlənilir</h3>
+    <h3>${titles[st]}</h3>
     <input id="korpSearch2" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
     <div class="line-grid small" style="font-weight:bold;padding:4px 8px;margin-top:10px">
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Tarix</span>
