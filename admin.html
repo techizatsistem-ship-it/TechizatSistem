@@ -84,11 +84,51 @@ let users = [];
 let failedDeletes = [];
 let curNav = 'users';
 
+// ---- Səhifələmə (Firestore read limitini azaltmaq üçün: hər tabda max 10 qaimə, lazım olanda çəkilir) ----
+const PAGE_SIZE = 10;
+let pg = {};
+async function pgLoad(key, whereFn, page){
+  if(!pg[key]) pg[key] = {cursors:[null], mode:null, page:1};
+  const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1;
+  try{
+    if(st.mode==='fallback') throw 0;
+    for(let p=1;p<=page;p++){
+      if(st.cursors[p]!==undefined) continue;
+      let q = whereFn().orderBy('createdAt','desc').limit(PAGE_SIZE);
+      if(st.cursors[p-1]) q = whereFn().orderBy('createdAt','desc').startAfter(st.cursors[p-1]).limit(PAGE_SIZE);
+      const snap = await q.get();
+      st.cursors[p] = snap.docs.length ? snap.docs[snap.docs.length-1] : (st.cursors[p-1]||null);
+      if(p===page) st.rows = snap.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    if(st.total==null){ try{ const c = await whereFn().count().get(); st.total = c.data().count; }catch(e){ st.total=st.rows?st.rows.length:0; } }
+    st.mode = 'index';
+  }catch(e){
+    if(e) console.warn('Pagination indeksi yoxdur, ehtiyat rejiminə keçildi (Firebase konsolunda təklif olunan indeks linkinə klikləsəniz sürətlənər):', e);
+    if(!st.all){
+      const snap = await whereFn().get();
+      st.all = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+    }
+    st.total = st.all.length;
+    st.mode = 'fallback';
+    st.rows = st.all.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  }
+  render();
+}
+function pgGoto(key, page){ pgLoad(key, pg[key].wf, page); }
+function pgButtons(key){
+  const st = pg[key];
+  if(!st || !st.total || st.total<=PAGE_SIZE) return '';
+  const pages = Math.ceil(st.total/PAGE_SIZE);
+  let h = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">';
+  for(let i=1;i<=pages;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+  return h+'</div>';
+}
+
 function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin',istehsalat:'İstehsalat'}[r]||r; }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
-function isTecili(q){ return q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3); }
+function isTecili(q){ return q.status!=='medaxil' && (q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3)); }
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
 function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':'Mədaxil edildi'); }
 function statusWithWho(q){
@@ -123,7 +163,6 @@ function boot(){
   document.getElementById('navTabs').innerHTML = [['users','İstifadəçilər'],['qaimeler','Qaimlər'],['failed','Silinməyən şəkillər']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   db.collection('users').onSnapshot(snap=>{ users = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
-  db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{ qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
   db.collection('failedDeletes').orderBy('at','desc').onSnapshot(snap=>{ failedDeletes = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
   render();
 }
@@ -191,13 +230,18 @@ async function deleteUser(id){
   await db.collection('users').doc(id).delete();
   closeModal();
 }
-function openUserStats(id){
+async function openUserStats(id){
   const u = users.find(x=>x.id===id);
+  document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box"><div class="small">Yüklənir...</div></div></div>`;
+  const [addedSnap, workedSnap] = await Promise.all([
+    db.collection('qaimeler').where('sifarisVeren','==',u.name).get(),
+    db.collection('qaimeler').where('isleyen','==',u.name).get()
+  ]);
   const roles = u.roles || (u.role?[u.role]:[]);
   const weekAgo = Date.now()-7*86400000;
   const monthAgo = Date.now()-30*86400000;
-  const addedByName = qaimeler.filter(q=>q.sifarisVeren===u.name);
-  const workedByName = qaimeler.filter(q=>q.isleyen===u.name);
+  const addedByName = addedSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const workedByName = workedSnap.docs.map(d=>({id:d.id,...d.data()}));
   const addedToday = addedByName.filter(q=>isToday(q.createdAt)).length;
   const addedMonth = addedByName.filter(q=>q.createdAt && (q.createdAt.toDate?q.createdAt.toDate():new Date(q.createdAt)).getTime()>monthAgo).length;
   const medaxilToday = workedByName.filter(q=>q.status==='medaxil' && isToday(q.tookAt)).length;
@@ -243,15 +287,35 @@ function openQaimeDetail(id){
 }
 async function markChecked(id){
   await db.collection('qaimeler').doc(id).update({checked:true});
+  pg = {};
   closeModal();
 }
 
 let qStatusFilter = 'yeni';
 function setQStatus(s){ qStatusFilter = s; render(); }
+function qStatusWhereFn(){
+  return qStatusFilter==='checked'
+    ? ()=> db.collection('qaimeler').where('checked','==',true)
+    : ()=> db.collection('qaimeler').where('status','==',qStatusFilter);
+}
 function viewQaimeler(){
   const search = document.getElementById('adminSearch')?.value || '';
-  let list = qStatusFilter==='checked' ? qaimeler.filter(q=>q.checked) : qaimeler.filter(q=>q.status===qStatusFilter && !q.checked);
-  if(search) list = list.filter(q=> String(q.no).includes(search) || (q.sifarisVeren||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
+  const key = 'admin_'+qStatusFilter;
+  let list, pager = '';
+  if(search){
+    const skey = key+'_search';
+    if(!pg[skey] || pg[skey].mode!=='search'){
+      if(!pg[skey]){ pg[skey] = {mode:'search', loading:true}; qStatusWhereFn()().get().then(snap=>{ pg[skey].all = snap.docs.map(d=>({id:d.id,...d.data()})); pg[skey].loading=false; render(); }); }
+    }
+    list = (pg[skey] && pg[skey].all || []).filter(q=> String(q.no).includes(search) || (q.sifarisVeren||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
+    list = list.filter(q=> qStatusFilter!=='checked' ? !q.checked : true);
+  } else {
+    if(!pg[key]){ pgLoad(key, qStatusWhereFn()); }
+    list = (pg[key] && pg[key].rows) || [];
+    if(qStatusFilter!=='checked') list = list.filter(q=>!q.checked);
+    pager = pgButtons(key);
+  }
+  qaimeler = list;
   const rows = list.map(q=>{
     const photos = q.photos||[];
     const thumb = photos[0] ? `<img class="thumb" src="${photos[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(photos).replace(/"/g,'&quot;')},0)">` : '<span class="small">—</span>';
@@ -278,6 +342,7 @@ function viewQaimeler(){
     </div>
     <input id="adminSearch" placeholder="Axtar (№ / sifarişçi / kim üçün)" value="${search}" oninput="render()">
     <div style="margin-top:10px">${rows || '<div class="small">Yoxdur</div>'}</div>
+    ${pager}
   </div>`;
 }
 function viewFailedDeletes(){
@@ -442,6 +507,7 @@ async function adminDeleteQ(id){
   let failed = [];
   if(q) failed = await deleteQaimePhotos(q);
   await db.collection('qaimeler').doc(id).delete();
+  pg = {};
   if(failed.length) alert(`Diqqət: ${failed.length} şəkil Cloudinary-dən silinmədi. "Silinməyən şəkillər" bölməsinə qeyd olundu.`);
 }
 async function deleteFailedLog(id){
