@@ -133,6 +133,10 @@ function searchList(key, whereFn, search){
   list = list.filter(q=> String(q.no).includes(search) || (q.kimUcun||'').toLowerCase().includes(s) || (q.anbar||'').toLowerCase().includes(s));
   return list.slice().sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
 }
+function findQ(id){
+  for(const k in pg){ const st=pg[k]; const r=(st.rows&&st.rows.find(x=>x.id===id))||(st.all&&st.all.find(x=>x.id===id)); if(r) return r; }
+  return qaimeler.find(x=>x.id===id);
+}
 function scopedWf(baseWf){
   return currentUser.isKorUser ? ()=> baseWf().where('kimUcunId','==',currentUser.korUserId) : baseWf;
 }
@@ -301,10 +305,13 @@ function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle(
 
 function viewIslemede(st){
   const titles = {islemede:'İşlənilir', sorgu:'Sorğudadır', tesdiqlenib:'Təsdiq edilib'};
+  const key = 'kp_'+st;
   const search = document.getElementById('korpSearch2')?.value || '';
-  let list = myScope(qaimeler.filter(q=>q.status===st && q.qType!=='istehsalat'));
-  if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
-  list = list.slice().sort((a,b)=> (b.tookAt?.toMillis?.()||0)-(a.tookAt?.toMillis?.()||0));
+  const wf = scopedWf(()=> db.collection('qaimeler').where('status','==',st));
+  let list, pager='';
+  if(search){ list = searchList(key+'_search', wf, search); }
+  else{ if(!pg[key]) pgLoad(key, wf); list = (pg[key]&&pg[key].rows)||[]; pager = pgButtons(key); }
+  list = list.filter(q=>q.qType!=='istehsalat').slice().sort((a,b)=> (b.tookAt?.toMillis?.()||0)-(a.tookAt?.toMillis?.()||0));
   return `<div class="card">
     <h3>${titles[st]}</h3>
     <input id="korpSearch2" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
@@ -312,6 +319,7 @@ function viewIslemede(st){
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Tarix</span>
     </div>
     ${list.map(q=>rowIslemede(q)).join('') || '<div class="small">Yoxdur</div>'}
+    ${pager}
   </div>`;
 }
 function rowIslemede(q){
@@ -330,9 +338,10 @@ function rowIslemede(q){
 
 function viewIstehsalat(){
   const search = document.getElementById('korpSearch3')?.value || '';
-  let list = myScope(qaimeler.filter(q=>q.qType==='istehsalat'));
-  if(search) list = list.filter(q=> (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()) || String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()));
-  list = list.slice().sort((a,b)=> (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+  const wf = scopedWf(()=> db.collection('qaimeler').where('qType','==','istehsalat'));
+  let list, pager='';
+  if(search){ list = searchList('kp_istehsalat_search', wf, search); }
+  else{ if(!pg['kp_istehsalat']) pgLoad('kp_istehsalat', wf); list = (pg['kp_istehsalat']&&pg['kp_istehsalat'].rows)||[]; pager = pgButtons('kp_istehsalat'); }
   return `<div class="card">
     <h3>İstehsalat Qaimləri</h3>
     <input id="korpSearch3" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
@@ -340,6 +349,7 @@ function viewIstehsalat(){
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Status</span>
     </div>
     ${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}
+    ${pager}
   </div>`;
 }
 
@@ -362,7 +372,7 @@ async function sendProblem(id){
   const text = document.getElementById('pmText').value.trim();
   const err = document.getElementById('pmErr');
   if(!ad || !text){ err.innerText='Ad və problem mütləqdir'; return; }
-  const q = qaimeler.find(x=>x.id===id);
+  const q = findQ(id);
   if(q.korpMessages && q.korpMessages.length){ err.innerText='Bu qaimə üçün artıq problem bildirilib'; return; }
   await db.collection('qaimeler').doc(id).update({
     korpMessages: firebase.firestore.FieldValue.arrayUnion({ad, text, solved:false, createdAt:new Date().toISOString()})
