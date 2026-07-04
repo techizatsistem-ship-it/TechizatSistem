@@ -121,6 +121,7 @@ const THREE_MONTHS_MS = 90*86400000;
 let currentUser = JSON.parse(localStorage.getItem('cu')||'null');
 let qaimeler = [];
 let curTab = 'aktiv';
+let curPage = 1;
 let curNav = null;
 let selected = new Set();
 let dismissed = new Set();
@@ -270,7 +271,7 @@ function setupNav(){
   el.innerHTML = tabs.map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   render();
 }
-function setNav(n){ curNav=n; render(); }
+function setNav(n){ curNav=n; curPage=1; render(); }
 
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
@@ -458,14 +459,21 @@ function viewAnbarList(src){
   const search = document.getElementById('anbarSearch')?.value || '';
   if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
   list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
+  const PAGE_SIZE = 10;
+  const pageCount = Math.max(1, Math.ceil(list.length/PAGE_SIZE));
+  if(curPage>pageCount) curPage = pageCount;
+  if(curPage<1) curPage = 1;
+  const pageList = list.slice((curPage-1)*PAGE_SIZE, curPage*PAGE_SIZE);
+  const pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${curPage===i+1?'':'sec'}" style="padding:4px 10px" onclick="curPage=${i+1};render()">${i+1}</button>`).join('')}</div>` : '';
   const title = src==='istehsalat' ? 'İstehsalat Qaimləri' : 'Qaimlər';
   return `<div class="card">
     <h3>${title}</h3>
-    <input id="anbarSearch" placeholder="Axtar (qaimə № / anbar)" value="${search}" oninput="render()">
-    <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="curTab='${t[0]}';render()">${t[1]}${t[0]==='problemli'&&problemCount?` <span class="badge">${problemCount}</span>`:''}</button>`).join('')}</div>
+    <input id="anbarSearch" placeholder="Axtar (qaimə № / anbar)" value="${search}" oninput="curPage=1;render()">
+    <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="curTab='${t[0]}';curPage=1;render()">${t[1]}${t[0]==='problemli'&&problemCount?` <span class="badge">${problemCount}</span>`:''}</button>`).join('')}</div>
     ${curTab==='aktiv'?`<button onclick="bulkTake()">İşlə (seçilənlər: ${selected.size})</button>`:''}
     ${curTab==='tesdiqlenib'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button class="sec" onclick="copyCodes('${src}')">Kodları kopyala</button><button onclick="bulkMedaxilFinal('${src}')">Mədaxil edildi (seçilənlər: ${selected.size})</button></div>`:''}
-    <div style="margin-top:10px">${listHead()}${list.map(q=>rowHtml(q,true)).join('') || '<div class="small">Yoxdur</div>'}</div>
+    <div style="margin-top:10px">${listHead()}${pageList.map(q=>rowHtml(q,true)).join('') || '<div class="small">Yoxdur</div>'}</div>
+    ${pager}
   </div>`;
 }
 function filterByTab(tab, src){
