@@ -203,6 +203,13 @@ seedUsers();
 async function doLogin(){
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value.trim();
+  const kSnap = await db.collection('korusers').doc(u).get();
+  if(kSnap.exists && p==='7777'){
+    currentUser = {username:u, name:kSnap.data().name, roles:['sifarisci'], mode:'sifarisci', isKorUser:true, korUserId:u};
+    localStorage.setItem('cu', JSON.stringify(currentUser));
+    boot();
+    return;
+  }
   const snap = await db.collection('users').doc(u).get();
   if(!snap.exists || snap.data().password !== p){
     document.getElementById('loginErr').innerText = 'İstifadəçi adı və ya şifrə yanlışdır';
