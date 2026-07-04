@@ -151,8 +151,7 @@ async function trySendOne(rec){
     }
 
     const wm = [`Sifarişçi: ${rec.sifarisVeren}`, `Anbar: ${rec.anbar}`, `Kim üçün: ${rec.kimUcun}`, `Ödəniş: ${rec.odenisTipi}`];
-    const photos = [];
-    for(const f of rec.files){ const blob = await compressImage(f, 1200, 0.7, wm); photos.push(await uploadToCloudinary(blob)); }
+    const photos = await Promise.all(rec.files.map(async f=>{ const blob = await compressImage(f, 1200, 0.7, wm); return uploadToCloudinary(blob); }));
     const no = await db.runTransaction(async t=>{
       const ref = db.collection('meta').doc('counter');
       const snap = await t.get(ref);
@@ -181,7 +180,7 @@ async function trySendAll(){
   sending = false;
 }
 window.addEventListener('online', trySendAll);
-setInterval(trySendAll, 20000);
+setInterval(trySendAll, 8000);
 
 function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',korporativ:'Korporativ',admin:'Admin',istehsalat:'İstehsalat'}[r]||r; }
 
@@ -302,7 +301,7 @@ function render(){
   if(mineBtn) mineBtn.innerHTML = 'Mənim Qaimlərim' + (pendingQaimeler.length?` <span class="badge">${pendingQaimeler.length}</span>`:'');
   const m = document.getElementById('main');
   if(currentUser.mode==='sifarisci'){
-    if(curNav==='add') m.innerHTML = viewAddForm();
+    if(curNav==='add'){ if(!document.getElementById('f_anbar')) m.innerHTML = viewAddForm(); }
     else if(curNav==='mine') m.innerHTML = viewMine();
     else m.innerHTML = viewStats();
   } else {
