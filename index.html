@@ -6,7 +6,9 @@
 <title>Qaimə Sistemi</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="push-config.js"></script>
 <style>
+
 *{box-sizing:border-box;font-family:Arial,sans-serif}
 body{margin:0;background:#f2f2f2;colora:#222}
 input,select,textarea,button{font-size:15px;padding:8px;border:1px solid #ccc;border-radius:5px;width:100%;margin-top:4px}
@@ -205,6 +207,7 @@ function boot(){
   renderModeSwitch();
   setupNav();
   loadPending();
+  setupPush(db, currentUser.username);
   db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
     render();
@@ -702,7 +705,9 @@ function openProblemModal(id){
 async function saveProblem(id){
   const text = document.getElementById('probText').value.trim();
   if(!text) return;
+  const q = qaimeler.find(x=>x.id===id);
   await db.collection('qaimeler').doc(id).update({problem:{text, solved:false}});
+  if(q) sendPushToName(db, q.sifarisVeren, 'Problem bildirildi', `Qaimə_${q.no}: ${text}`);
   closeModal();
 }
 
@@ -918,3 +923,5 @@ function viewStats(){
 </script>
 </body>
 </html>
+
+

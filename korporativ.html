@@ -6,7 +6,9 @@
 <title>Korporativ — Qaimə Sistemi</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="push-config.js"></script>
 <style>
+
 *{box-sizing:border-box;font-family:Arial,sans-serif}
 body{margin:0;background:#f2f2f2;color:#222}
 input,select,textarea,button{font-size:15px;padding:8px;border:1px solid #ccc;border-radius:5px;width:100%;margin-top:4px}
@@ -138,6 +140,7 @@ function boot(){
   document.getElementById('userInfo').onclick = logout;
   document.getElementById('navTabs').innerHTML = [['yeni','Yeni'],['medaxil','Mədaxil Olunub'],['islemede','İşlənilir'],['istehsalat','İstehsalat']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
+  setupPush(db, currentUser.username);
   db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
     render();
@@ -302,6 +305,7 @@ async function sendProblem(id){
   await db.collection('qaimeler').doc(id).update({
     korpMessages: firebase.firestore.FieldValue.arrayUnion({ad, text, solved:false, createdAt:new Date().toISOString()})
   });
+  if(q.isleyen) sendPushToName(db, q.isleyen, 'Korporativdən problem', `Qaimə_${q.no} (${ad}): ${text}`);
   closeModal();
 }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
