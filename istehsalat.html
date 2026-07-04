@@ -325,12 +325,13 @@ function reviewRow(q, isSorgu){
     ${isSorgu?`<button style="margin-top:6px" onclick="confirmSorgu('${q.id}')">Təsdiq edildi</button>`:`<button class="sec" style="margin-top:6px" onclick="revertTesdiq('${q.id}')">Geri çək</button>`}
   </div>`;
 }
-async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib'}); pg={}; }
+async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib'}); pg={}; render(); }
 async function revertTesdiq(id){
   const q = reviewQaimeler.find(x=>x.id===id) || qaimeler.find(x=>x.id===id);
   if(q && q.status==='medaxil'){ alert('Mədaxil edilmiş qaimə geri çəkilə bilməz.'); return; }
   await db.collection('qaimeler').doc(id).update({status:'sorgu'});
   pg={};
+  render();
 }
 function viewAddForm(){
   const anbarList = [...new Set(myQaimeler.map(q=>q.anbar).filter(Boolean))];
@@ -541,6 +542,7 @@ async function saveEdit(id){
   });
   pg={};
   closeModal();
+  render();
 }
 const CL_API_KEY = '947222283424236', CL_API_SECRET = 'oDGIa0KI-R6KhOazJR7g5sWMzX0';
 async function sha1(str){ const b = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
@@ -573,6 +575,7 @@ async function deleteQaime(id){
   if(q) failed = await deleteQaimePhotos(q);
   await db.collection('qaimeler').doc(id).delete();
   pg={};
+  render();
   if(failed.length) alert(`Diqqət: ${failed.length} şəkil Cloudinary-dən silinmədi. Admin panelinə qeyd olundu.`);
 }
 
@@ -646,7 +649,9 @@ async function saveResolve(id){
   const q = qaimeler.find(x=>x.id===id);
   await db.collection('qaimeler').doc(id).update({problem:{text:q.problem.text, solved:true, solution:sol}});
   dismissed.add(id);
+  pg={};
   closeModal();
+  render();
 }
 
 function checkNotifications(){
