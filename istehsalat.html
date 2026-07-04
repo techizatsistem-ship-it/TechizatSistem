@@ -78,6 +78,22 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+
+let korUsers = [];
+db.collection('korusers').get().then(s=>{ korUsers = s.docs.map(d=>({id:d.id, name:d.data().name})); });
+function kimFilter(){
+  document.getElementById('f_kim_id').value='';
+  const q = document.getElementById('f_kim').value.trim().toLowerCase();
+  const box = document.getElementById('kimBox');
+  const list = korUsers.filter(u=>u.name.toLowerCase().includes(q));
+  box.innerHTML = list.map(u=>`<div style="padding:8px;cursor:pointer;border-bottom:1px solid #eee" onclick="kimPick('${u.id}',${JSON.stringify(u.name)})">${u.name}</div>`).join('') || '<div style="padding:8px;color:#999">Tapılmadı — yazdığınız qəbul olunacaq</div>';
+  box.style.display = 'block';
+}
+function kimPick(id, name){
+  document.getElementById('f_kim').value = name;
+  document.getElementById('f_kim_id').value = id;
+  document.getElementById('kimBox').style.display = 'none';
+}
 const CLOUD_NAME='u0vnb2cg', UPLOAD_PRESET='TechizatSistemCloudinary';
 
 let currentUser = JSON.parse(sessionStorage.getItem('istehcu')||'null');
@@ -188,7 +204,6 @@ function render(){
 }
 
 function viewAddForm(){
-  const kimUcunList = [...new Set(qaimeler.map(q=>q.kimUcun).filter(Boolean))];
   const anbarList = [...new Set(qaimeler.map(q=>q.anbar).filter(Boolean))];
   return `<div class="card">
     <h3>Qaimə Əlavə Et</h3>
@@ -198,8 +213,11 @@ function viewAddForm(){
     <input id="f_anbar" list="dl_anbar">
     <datalist id="dl_anbar">${anbarList.map(a=>`<option value="${a}">`).join('')}</datalist>
     <label>Kim üçün alındı *</label>
-    <input id="f_kim" list="dl_kim">
-    <datalist id="dl_kim">${kimUcunList.map(a=>`<option value="${a}">`).join('')}</datalist>
+    <div style="position:relative">
+      <input id="f_kim" autocomplete="off" oninput="kimFilter()" onfocus="kimFilter()" onblur="setTimeout(()=>{const b=document.getElementById('kimBox'); if(b) b.style.display='none';},150)">
+      <input type="hidden" id="f_kim_id">
+      <div id="kimBox" style="display:none;position:absolute;z-index:50;background:#fff;border:1px solid #ccc;max-height:180px;overflow:auto;width:100%;box-shadow:0 4px 10px rgba(0,0,0,.15)"></div>
+    </div>
     <label>Ödəniş tipi *</label>
     <select id="f_odenis"><option value="">Seçin</option><option>Köçürmə</option><option>Nağd</option></select>
     <label>Qeyd</label>
