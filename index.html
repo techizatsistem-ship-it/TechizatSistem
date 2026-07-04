@@ -203,6 +203,17 @@ seedUsers();
 async function doLogin(){
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value.trim();
+  let kUser = null;
+  const kSnap = await db.collection('korusers').doc(u).get();
+  if(kSnap.exists) kUser = {id:kSnap.id, name:kSnap.data().name};
+  else{
+    const nameSnap = await db.collection('korusers').where('name','==',u).limit(1).get();
+    if(!nameSnap.empty) kUser = {id:nameSnap.docs[0].id, name:nameSnap.docs[0].data().name};
+  }
+  if(kUser && p==='7777'){
+    sessionStorage.setItem('korpcu', JSON.stringify({username:kUser.id, name:kUser.name, isKorUser:true, korUserId:kUser.id}));
+    location.href = 'korporativ.html'; return;
+  }
   const snap = await db.collection('users').doc(u).get();
   if(!snap.exists || snap.data().password !== p){
     document.getElementById('loginErr').innerText = 'İstifadəçi adı və ya şifrə yanlışdır';
