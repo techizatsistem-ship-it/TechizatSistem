@@ -129,6 +129,7 @@ let pickedFiles = [];
 let medPicked = [];
 let pendingQaimeler = [];
 let sending = false;
+let inFlight = new Set(); // eyni qaimənin paralel iki dəfə göndərilməsinin qarşısını alır
 
 const IDB_NAME='qaimeOffline', IDB_STORE='pending';
 function idbOpen(){ return new Promise((res,rej)=>{ const req=indexedDB.open(IDB_NAME,1); req.onupgradeneeded=()=>req.result.createObjectStore(IDB_STORE,{keyPath:'localId'}); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
@@ -138,7 +139,17 @@ async function idbAll(){ const d=await idbOpen(); return new Promise((res,rej)=>
 async function loadPending(){ pendingQaimeler = (await idbAll()).filter(r=>r.qType==='sifaris'); render(); trySendAll(); }
 async function trySendOne(rec){
   if(!rec) return false;
+  if(inFlight.has(rec.localId)) return false;
+  inFlight.add(rec.localId);
   try{
+    const already = await db.collection('qaimeler').where('localId','==', rec.localId).limit(1).get();
+    if(!already.empty){
+      await idbDelete(rec.localId);
+      pendingQaimeler = pendingQaimeler.filter(x=>x.localId!==rec.localId);
+      render();
+      return true;
+    }
+
     const wm = [`Sifarişçi: ${rec.sifarisVeren}`, `Anbar: ${rec.anbar}`, `Kim üçün: ${rec.kimUcun}`, `Ödəniş: ${rec.odenisTipi}`];
     const photos = [];
     for(const f of rec.files){ const blob = await compressImage(f, 1200, 0.7, wm); photos.push(await uploadToCloudinary(blob)); }
@@ -150,7 +161,7 @@ async function trySendOne(rec){
       return val;
     });
     await db.collection('qaimeler').add({
-      no, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, kimUcunId: rec.kimUcunId||null, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
+      no, localId: rec.localId, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, kimUcunId: rec.kimUcunId||null, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
       tecili: rec.tecili, photos, photosUploading:false, status:'yeni', isleyen:null, problem:null,
       medaxilPhotos: [], medaxilPhotosUploading:false,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(), medaxilNo:null
@@ -161,6 +172,7 @@ async function trySendOne(rec){
     render();
     return true;
   }catch(e){ console.error(e); return false; }
+  finally{ inFlight.delete(rec.localId); }
 }
 async function trySendAll(){
   if(sending || !navigator.onLine) return;
