@@ -525,6 +525,7 @@ function rowHtml(q, anbarMode){
     <div class="details hidden" id="det_${q.id}">
       <div>Tarix: ${fmtDate(q.createdAt)}</div>
       <div>Status: ${statusLabel(q.status)}${q.isleyen?(' — İşləyir: '+q.isleyen):''}</div>
+      ${(q.status==='tesdiqlenib'||q.status==='medaxil') && q.tesdiqEden ? `<div>Təsdiq edən: ${q.tesdiqEden}</div>` : ''}
       ${q.qeyd?`<div>Qeyd: ${q.qeyd}</div>`:''}
       ${q.medaxilNo?`<div>Mədaxil №: ${q.medaxilNo}</div>`:''}
       ${q.medaxilPhotos && q.medaxilPhotos[0] ? `<div style="margin-top:6px">Mədaxil şəkli: <img class="thumb" src="${q.medaxilPhotos[0]}" onclick="openViewer(${JSON.stringify(q.medaxilPhotos).replace(/"/g,'&quot;')},0)"></div>`:''}
