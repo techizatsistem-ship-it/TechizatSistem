@@ -135,14 +135,12 @@ let inFlight = new Set(); // eyni qaimənin paralel iki dəfə göndərilməsini
 let curPageMed = 1; // "Mədaxil Olunanlar" bölməsi üçün səhifə (mənim qaimlərim)
 
 // --- Mədaxil olunmuş qaimələr üçün Firestore-dan bilavasitə (lazy + səhifəli) yüklənmə ---
-let medPage = { loaded:false, loading:false, page:1, totalPages:1, docs:[], cursors:[null] };
-let mineMedPage = { loaded:false, loading:false, page:1, totalPages:1, docs:[], cursors:[null] };
+let medPage = { loaded:false, loading:false, page:1, maxKnownPage:1, hasMore:false, docs:[], cursors:[null] };
+let mineMedPage = { loaded:false, loading:false, page:1, maxKnownPage:1, hasMore:false, docs:[], cursors:[null] };
 async function openMedaxilTab(){
   curTab = 'medaxil'; curPage = 1;
-  medPage = { loaded:false, loading:true, page:1, totalPages:1, docs:[], cursors:[null] };
+  medPage = { loaded:false, loading:true, page:1, maxKnownPage:1, hasMore:false, docs:[], cursors:[null] };
   render();
-  const cs = await db.collection('qaimeler').where('status','==','medaxil').count().get();
-  medPage.totalPages = Math.max(1, Math.ceil(cs.data().count/10));
   await loadMedaxilPage(1);
 }
 async function loadMedaxilPage(page){
@@ -152,7 +150,9 @@ async function loadMedaxilPage(page){
   const snap = await q.get();
   medPage.docs = snap.docs.map(d=>({id:d.id, ...d.data()}));
   if(snap.docs.length) medPage.cursors[page] = snap.docs[snap.docs.length-1];
-  medPage.page = page; medPage.loading = false; medPage.loaded = true; curPage = page;
+  medPage.hasMore = snap.docs.length===10;
+  medPage.page = page; if(page>medPage.maxKnownPage) medPage.maxKnownPage = page;
+  medPage.loading = false; medPage.loaded = true; curPage = page;
   render();
 }
 async function goMedaxilPage(page){
@@ -160,10 +160,8 @@ async function goMedaxilPage(page){
   await loadMedaxilPage(page);
 }
 async function openMineMedaxilTab(){
-  mineMedPage = { loaded:false, loading:true, page:1, totalPages:1, docs:[], cursors:[null] };
+  mineMedPage = { loaded:false, loading:true, page:1, maxKnownPage:1, hasMore:false, docs:[], cursors:[null] };
   render();
-  const cs = await db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).where('status','==','medaxil').count().get();
-  mineMedPage.totalPages = Math.max(1, Math.ceil(cs.data().count/10));
   await loadMineMedaxilPage(1);
 }
 async function loadMineMedaxilPage(page){
@@ -173,7 +171,9 @@ async function loadMineMedaxilPage(page){
   const snap = await q.get();
   mineMedPage.docs = snap.docs.map(d=>({id:d.id, ...d.data()}));
   if(snap.docs.length) mineMedPage.cursors[page] = snap.docs[snap.docs.length-1];
-  mineMedPage.page = page; mineMedPage.loading = false; mineMedPage.loaded = true; curPageMed = page;
+  mineMedPage.hasMore = snap.docs.length===10;
+  mineMedPage.page = page; if(page>mineMedPage.maxKnownPage) mineMedPage.maxKnownPage = page;
+  mineMedPage.loading = false; mineMedPage.loaded = true; curPageMed = page;
   render();
 }
 async function goMineMedaxilPage(page){
@@ -493,8 +493,7 @@ function viewMine(){
   const allMine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
   const mine = allMine.filter(q=>q.status!=='medaxil');
   const pend = pendingQaimeler;
-  const pageCount = mineMedPage.totalPages;
-  const pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${mineMedPage.page===i+1?'':'sec'}" style="padding:4px 10px" onclick="goMineMedaxilPage(${i+1})">${i+1}</button>`).join('')}</div>` : '';
+  const pager = (mineMedPage.maxKnownPage>1 || mineMedPage.hasMore) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(mineMedPage.maxKnownPage)].map((_,i)=>`<button class="${mineMedPage.page===i+1?'':'sec'}" style="padding:4px 10px" onclick="goMineMedaxilPage(${i+1})">${i+1}</button>`).join('')}${mineMedPage.hasMore?`<button class="sec" style="padding:4px 10px" onclick="goMineMedaxilPage(${mineMedPage.maxKnownPage+1})">Sonrakı</button>`:''}</div>` : '';
   return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>${listHead()}${pend.map(r=>pendingRowHtml(r)).join('')}${mine.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}</div>
   <div class="card"><h3>Mədaxil Olunanlar</h3>${listHead()}${mineMedPage.loading?'<div class="small">Yüklənir...</div>':(mineMedPage.docs.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>')}${pager}</div>`;
 }
@@ -528,8 +527,7 @@ function viewAnbarList(src){
   let pageList, pager;
   if(isPagedMed){
     pageList = medPage.docs;
-    const pageCount = medPage.totalPages;
-    pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${medPage.page===i+1?'':'sec'}" style="padding:4px 10px" onclick="goMedaxilPage(${i+1})">${i+1}</button>`).join('')}</div>` : '';
+    pager = (medPage.maxKnownPage>1 || medPage.hasMore) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(medPage.maxKnownPage)].map((_,i)=>`<button class="${medPage.page===i+1?'':'sec'}" style="padding:4px 10px" onclick="goMedaxilPage(${i+1})">${i+1}</button>`).join('')}${medPage.hasMore?`<button class="sec" style="padding:4px 10px" onclick="goMedaxilPage(${medPage.maxKnownPage+1})">Sonrakı</button>`:''}</div>` : '';
   } else {
     let list = filterByTab(curTab, src);
     if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
