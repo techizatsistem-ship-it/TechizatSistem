@@ -99,19 +99,20 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let korUsers = korusersData.map(u=>({id:u.id, name:u.name}));
-function kimFilter(){
-  document.getElementById('f_kim_id').value='';
-  const q = document.getElementById('f_kim').value.trim().toLowerCase();
-  const box = document.getElementById('kimBox');
+function kimFilter(prefix){
+  prefix = prefix || 'f';
+  document.getElementById(prefix+'_kim_id').value='';
+  const q = document.getElementById(prefix+'_kim').value.trim().toLowerCase();
+  const box = document.getElementById(prefix+'_kimBox');
   const list = korUsers.filter(u=>u.name.toLowerCase().includes(q));
-  box.innerHTML = list.map(u=>`<div style="padding:8px;cursor:pointer;border-bottom:1px solid #eee" onclick="kimPick('${u.id}',${JSON.stringify(u.name).replace(/"/g,'&quot;')})">${u.name}</div>`).join('') || '<div style="padding:8px;color:#999">Tapılmadı — yazdığınız qəbul olunacaq</div>';
+  box.innerHTML = list.map(u=>`<div style="padding:8px;cursor:pointer;border-bottom:1px solid #eee" onclick="kimPick('${prefix}','${u.id}',${JSON.stringify(u.name).replace(/"/g,'&quot;')})">${u.name}</div>`).join('') || '<div style="padding:8px;color:#999">Tapılmadı — yazdığınız qəbul olunacaq</div>';
   box.style.display = 'block';
 }
-function kimPick(id, name){
-  const inp = document.getElementById('f_kim');
+function kimPick(prefix, id, name){
+  const inp = document.getElementById(prefix+'_kim');
   inp.value = name;
-  document.getElementById('f_kim_id').value = id;
-  document.getElementById('kimBox').style.display = 'none';
+  document.getElementById(prefix+'_kim_id').value = id;
+  document.getElementById(prefix+'_kimBox').style.display = 'none';
   inp.readOnly = true;
   inp.blur();
 }
@@ -337,9 +338,9 @@ function viewAddForm(){
     <datalist id="dl_anbar">${anbarList.map(a=>`<option value="${a}">`).join('')}</datalist>
     <label>Kim üçün alındı *</label>
     <div style="position:relative">
-      <input id="f_kim" autocomplete="off" oninput="kimFilter()" onfocus="if(!this.readOnly) kimFilter()" onclick="if(this.readOnly){this.readOnly=false;this.value='';document.getElementById('f_kim_id').value='';kimFilter();}" onblur="setTimeout(()=>{const b=document.getElementById('kimBox'); if(b) b.style.display='none';},150)">
+      <input id="f_kim" autocomplete="off" oninput="kimFilter('f')" onfocus="if(!this.readOnly) kimFilter('f')" onclick="if(this.readOnly){this.readOnly=false;this.value='';document.getElementById('f_kim_id').value='';kimFilter('f');}" onblur="setTimeout(()=>{const b=document.getElementById('f_kimBox'); if(b) b.style.display='none';},150)">
       <input type="hidden" id="f_kim_id">
-      <div id="kimBox" style="display:none;position:absolute;z-index:50;background:#fff;border:1px solid #ccc;max-height:180px;overflow:auto;width:100%;box-shadow:0 4px 10px rgba(0,0,0,.15)"></div>
+      <div id="f_kimBox" style="display:none;position:absolute;z-index:50;background:#fff;border:1px solid #ccc;max-height:180px;overflow:auto;width:100%;box-shadow:0 4px 10px rgba(0,0,0,.15)"></div>
     </div>
     <label>Ödəniş tipi *</label>
     <select id="f_odenis"><option value="">Seçin</option><option>Köçürmə</option><option>Nağd</option></select>
@@ -594,7 +595,12 @@ function openEditModal(id){
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
     <h3>Qaimə_${q.no} — Düzəliş</h3>
     <label>Hansı anbara alındı</label><input id="e_anbar" value="${q.anbar}">
-    <label>Kim üçün alındı</label><input id="e_kim" value="${q.kimUcun}">
+    <label>Kim üçün alındı</label>
+    <div style="position:relative">
+      <input id="e_kim" value="${q.kimUcun||''}" autocomplete="off" ${q.kimUcunId?'readonly':''} oninput="kimFilter('e')" onfocus="if(!this.readOnly) kimFilter('e')" onclick="if(this.readOnly){this.readOnly=false;this.value='';document.getElementById('e_kim_id').value='';kimFilter('e');}" onblur="setTimeout(()=>{const b=document.getElementById('e_kimBox'); if(b) b.style.display='none';},150)">
+      <input type="hidden" id="e_kim_id" value="${q.kimUcunId||''}">
+      <div id="e_kimBox" style="display:none;position:absolute;z-index:50;background:#fff;border:1px solid #ccc;max-height:180px;overflow:auto;width:100%;box-shadow:0 4px 10px rgba(0,0,0,.15)"></div>
+    </div>
     <label>Ödəniş tipi</label>
     <select id="e_odenis"><option ${q.odenisTipi==='Köçürmə'?'selected':''}>Köçürmə</option><option ${q.odenisTipi==='Nağd'?'selected':''}>Nağd</option></select>
     <label>Qeyd</label><textarea id="e_qeyd" rows="2">${q.qeyd||''}</textarea>
@@ -609,6 +615,7 @@ async function saveEdit(id){
   await db.collection('qaimeler').doc(id).update({
     anbar: document.getElementById('e_anbar').value.trim(),
     kimUcun: document.getElementById('e_kim').value.trim(),
+    kimUcunId: document.getElementById('e_kim_id').value || null,
     odenisTipi: document.getElementById('e_odenis').value,
     qeyd: document.getElementById('e_qeyd').value.trim(),
     tecili: document.getElementById('e_tecili').checked
@@ -657,9 +664,17 @@ async function bulkTake(){
     batch.update(db.collection('qaimeler').doc(id), {status:'islemede', isleyen:currentUser.name, tookAt: firebase.firestore.FieldValue.serverTimestamp()});
   });
   await batch.commit();
+  const byUser = new Map();
   selected.forEach(id=>{
     const q = qaimeler.find(x=>x.id===id);
-    if(q && q.kimUcunId) sendPushToKorUser(db, q.kimUcunId, 'Sifarişiniz işlənir', `Qaimə_${q.no} üzərində iş başladı.`);
+    if(q && q.kimUcunId){
+      if(!byUser.has(q.kimUcunId)) byUser.set(q.kimUcunId, []);
+      byUser.get(q.kimUcunId).push(q.no);
+    }
+  });
+  byUser.forEach((nos, kid)=>{
+    const body = nos.length===1 ? `Qaimə_${nos[0]} üzərində iş başladı.` : `Qaimə_${nos.join(', ')} üzərində iş başladı (${nos.length} ədəd).`;
+    sendPushToKorUser(db, kid, 'Sifarişiniz işlənir', body);
   });
   selected.clear();
   render();
@@ -677,9 +692,17 @@ async function bulkMedaxilFinal(src){
     batch.update(db.collection('qaimeler').doc(id), {status:'medaxil', tecili:false});
   });
   await batch.commit();
+  const byUser = new Map();
   selected.forEach(id=>{
     const q = qaimeler.find(x=>x.id===id);
-    if(q && q.kimUcunId) sendPushToKorUser(db, q.kimUcunId, 'Mədaxil olundu', `Qaimə_${q.no} mədaxil olundu.`);
+    if(q && q.kimUcunId){
+      if(!byUser.has(q.kimUcunId)) byUser.set(q.kimUcunId, []);
+      byUser.get(q.kimUcunId).push(q.no);
+    }
+  });
+  byUser.forEach((nos, kid)=>{
+    const body = nos.length===1 ? `Qaimə_${nos[0]} mədaxil olundu.` : `Qaimə_${nos.join(', ')} mədaxil olundu (${nos.length} ədəd).`;
+    sendPushToKorUser(db, kid, 'Mədaxil olundu', body);
   });
   selected.clear();
   render();
