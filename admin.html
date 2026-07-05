@@ -143,13 +143,13 @@ function boot(){
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   db.collection('users').onSnapshot(snap=>{ users = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
   db.collection('failedDeletes').orderBy('at','desc').onSnapshot(snap=>{ failedDeletes = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
-  ['yeni','islemede','medaxil'].forEach(st=>{
-    db.collection('qaimeler').where('status','==',st).onSnapshot(()=>{
-      const key = 'admin_'+st;
-      delete pg[key]; delete pg[key+'_search'];
-      if(curNav==='qaimeler' && qStatusFilter===st) render();
-    });
+['yeni','islemede'].forEach(st=>{
+  db.collection('qaimeler').where('status','==',st).onSnapshot(()=>{
+    const key = 'admin_'+st;
+    delete pg[key]; delete pg[key+'_search'];
+    if(curNav==='qaimeler' && qStatusFilter===st) render();
   });
+});
   db.collection('qaimeler').where('checked','==',true).onSnapshot(()=>{
     delete pg['admin_checked']; delete pg['admin_checked_search'];
     if(curNav==='qaimeler' && qStatusFilter==='checked') render();
