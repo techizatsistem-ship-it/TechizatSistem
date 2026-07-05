@@ -188,12 +188,14 @@ function photoThumb(url, allPhotos, size, blurable){
   if(blurable===undefined) blurable = true;
   const idx = allPhotos.indexOf(url);
   const openCall = `openViewer(${JSON.stringify(allPhotos).replace(/"/g,'&quot;')},${idx},${blurable})`;
+  const noSave = (currentUser.isKorUser && blurable) ? 'oncontextmenu="return false;" ondragstart="return false;" draggable="false"' : '';
+  
   if(!blurable || !shouldBlur()){
-    return `<img class="thumb" src="${url}" onclick="event.stopPropagation();${openCall}">`;
+    return `<img class="thumb" src="${url}" ${noSave} onclick="event.stopPropagation();${openCall}">`;
   }
-  return `<span class="thumb blurthumb" style="width:${size}px;height:${size}px" onclick="event.stopPropagation();${openCall}">
-    <img src="${url}" style="width:100%;height:100%;object-fit:cover">
-    <span class="bhalf"><img src="${url}"></span>
+  return `<span class="thumb blurthumb" style="width:${size}px;height:${size}px" ${noSave} onclick="event.stopPropagation();${openCall}">
+    <img src="${url}" style="width:100%;height:100%;object-fit:cover" ${noSave}>
+    <span class="bhalf"><img src="${url}" ${noSave}></span>
   </span>`;
 }
 
@@ -411,6 +413,10 @@ function openViewer(photos, idx, blurable){
   let rotate=0, scale=1, pinchDist=null;
   if(blurable===undefined) blurable = true;
   const blur = blurable && shouldBlur();
+  
+  // Koruser-lər üçün Sifariş şəkillərində (blurable=true) yükləmə və çapı bloklayırıq
+  const isRestricted = currentUser.isKorUser && blurable;
+
   document.getElementById('modalRoot').innerHTML = `<div id="viewerModal">
     <div class="bar">
       <button class="sec" onclick="closeModal()">Bağla</button>
@@ -418,17 +424,21 @@ function openViewer(photos, idx, blurable){
       <span id="vCount" style="color:#fff;align-self:center"></span>
       <button id="vNext">▶</button>
       <button id="vRotate">⟳ Döndər</button>
-      <button id="vPrint">🖨 Çap et</button>
-      <a id="vDl"><button>Yüklə</button></a>
+      <button id="vPrint" class="${isRestricted ? 'hidden' : ''}">🖨 Çap et</button>
+      <a id="vDl" class="${isRestricted ? 'hidden' : ''}"><button>Yüklə</button></a>
     </div>
-    <div id="vWrap" style="flex:1;overflow:hidden;display:flex;touch-action:none">
+    <div id="vWrap" style="flex:1;overflow:hidden;display:flex;touch-action:none" oncontextmenu="${isRestricted ? 'return false;' : ''}">
       <span id="vImgWrap" class="${blur?'blurwrap':''}" style="margin:auto">
-        <img id="vImg" style="max-width:100%;max-height:80vh;display:block">
-        ${blur?'<span class="bhalf"><img id="vBlurImg"></span>':''}
+        <img id="vImg" style="max-width:100%;max-height:80vh;display:block" ${isRestricted ? 'oncontextmenu="return false;" ondragstart="return false;" draggable="false"' : ''}>
+        ${blur?'<span class="bhalf"><img id="vBlurImg" oncontextmenu="return false;" ondragstart="return false;" draggable="false"></span>':''}
       </span>
     </div>
   </div>`;
-  document.getElementById('vPrint').onclick = ()=> printImage(photos[idx]);
+  
+  if(!isRestricted) {
+    document.getElementById('vPrint').onclick = ()=> printImage(photos[idx]);
+  }
+  
   const img = document.getElementById('vImg');
   const blurImg = document.getElementById('vBlurImg');
   const imgWrap = document.getElementById('vImgWrap');
@@ -437,7 +447,9 @@ function openViewer(photos, idx, blurable){
     if(blurImg) blurImg.src = photos[idx];
     imgWrap.style.transform = `rotate(${rotate}deg) scale(${scale})`;
     document.getElementById('vCount').innerText = (idx+1)+'/'+photos.length;
-    document.getElementById('vDl').href = dlUrl(photos[idx]);
+    if(!isRestricted) {
+      document.getElementById('vDl').href = dlUrl(photos[idx]);
+    }
   }
   document.getElementById('vPrev').onclick=()=>{ idx=(idx-1+photos.length)%photos.length; rotate=0;scale=1; update(); };
   document.getElementById('vNext').onclick=()=>{ idx=(idx+1)%photos.length; rotate=0;scale=1; update(); };
