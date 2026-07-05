@@ -169,6 +169,7 @@ function scopedWf(baseWf){
 function isIlyas(){ return currentUser && currentUser.username === 'ilyas'; }
 function myScope(list){ return currentUser.isKorUser ? list.filter(q=>q.kimUcunId===currentUser.korUserId) : list; }
 function shouldBlur(){ return !isIlyas(); }
+function noSaveAttrs(){ return currentUser.isKorUser ? 'oncontextmenu="return false" draggable="false"' : ''; }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function isTecili(q){ return q.status!=='medaxil' && q.tecili===true; }
