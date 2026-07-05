@@ -135,7 +135,7 @@ function boot(){
   document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
   document.getElementById('userInfo').style.cursor='pointer';
   document.getElementById('userInfo').onclick = logout;
-  document.getElementById('navTabs').innerHTML = [['users','İstifadəçilər'],['qaimeler','Qaimlər'],['failed','Silinməyən şəkillər']]
+  document.getElementById('navTabs').innerHTML = [['users','İstifadəçilər'],['qaimeler','Qaimlər'],['failed','Silinməyən şəkillər'],['tools','Alətlər']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   db.collection('users').onSnapshot(snap=>{ users = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
   db.collection('failedDeletes').orderBy('at','desc').onSnapshot(snap=>{ failedDeletes = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
@@ -160,7 +160,7 @@ function render(){
   const af = document.activeElement;
   const afId = af && af.id, afStart = af && af.selectionStart, afEnd = af && af.selectionEnd;
   document.querySelectorAll('#navTabs button').forEach(b=>b.classList.toggle('active', b.dataset.n===curNav));
-  document.getElementById('main').innerHTML = curNav==='users' ? viewUsers() : (curNav==='qaimeler' ? viewQaimeler() : viewFailedDeletes());
+  document.getElementById('main').innerHTML = curNav==='users' ? viewUsers() : (curNav==='qaimeler' ? viewQaimeler() : (curNav==='failed' ? viewFailedDeletes() : viewTools()));
   if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
 }
 
@@ -342,6 +342,40 @@ function viewFailedDeletes(){
     <div class="small">Bu şəkillər Cloudinary-dən avtomatik silinə bilmədi. Cloudinary panelindən əl ilə silib, sonra qeydi buradan silin.</div>
     <div style="margin-top:10px">${rows || '<div class="small">Yoxdur</div>'}</div>
   </div>`;
+}
+
+function viewTools(){
+  return `<div class="card">
+    <h3>Alətlər</h3>
+    <div class="small">Köhnə "sifariş" qaimələrində <code>qType</code> sahəsi yoxdur (yalnız istehsalat qaimələrində var). Bu düymə bütün qaimələri bir dəfə yoxlayır və <code>qType</code> sahəsi olmayanlara <code>qType:'sifaris'</code> yazır. Bir dəfə işlədikdən sonra bir daha lazım deyil — yenidən bassanız belə zərəri yoxdur (artıq düzəldilmişlərə toxunmur).</div>
+    <button id="migrateBtn" style="margin-top:10px" onclick="migrateQTypeSifaris()">Miqrasiyanı işə sal</button>
+    <div id="migrateResult" class="small" style="margin-top:8px"></div>
+  </div>`;
+}
+async function migrateQTypeSifaris(){
+  if(!confirm('Bütün qaimələr bir dəfə yoxlanılacaq və qType sahəsi olmayanlara "sifaris" yazılacaq. Davam edilsin?')) return;
+  const btn = document.getElementById('migrateBtn');
+  const out = document.getElementById('migrateResult');
+  btn.disabled = true; btn.innerText = 'İşləyir...'; out.innerText = '';
+  try{
+    const snap = await db.collection('qaimeler').get();
+    const toFix = snap.docs.filter(d => d.data().qType === undefined);
+    let done = 0;
+    for(let i=0;i<toFix.length;i+=450){
+      const chunk = toFix.slice(i,i+450);
+      const batch = db.batch();
+      chunk.forEach(d=> batch.update(d.ref, {qType:'sifaris'}));
+      await batch.commit();
+      done += chunk.length;
+      out.innerText = `${done}/${toFix.length} yeniləndi...`;
+    }
+    out.innerText = `Bitdi. Baxılan sənəd: ${snap.size}, yenilənən: ${done}.`;
+  }catch(e){
+    console.error(e);
+    out.innerText = 'Xəta: ' + (e.message||e);
+  } finally {
+    btn.disabled = false; btn.innerText = 'Miqrasiyanı işə sal';
+  }
 }
 
 let modalHistoryPushed = false;
