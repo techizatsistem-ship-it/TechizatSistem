@@ -139,7 +139,7 @@ function boot(){
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   db.collection('users').onSnapshot(snap=>{ users = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
   db.collection('failedDeletes').orderBy('at','desc').onSnapshot(snap=>{ failedDeletes = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
-  ['yeni','islemede','medaxil'].forEach(st=>{
+  ['yeni','islemede'].forEach(st=>{
     db.collection('qaimeler').where('status','==',st).onSnapshot(()=>{
       const key = 'admin_'+st;
       delete pg[key]; delete pg[key+'_search'];
