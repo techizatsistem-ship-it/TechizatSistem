@@ -28,6 +28,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 .row{border:1px solid #ddd;border-radius:6px;margin-bottom:6px;padding:8px;background:#fff}
 .row.tecili{border:2px solid #c0392b}
 .row.checked{opacity:.6}
+.row.hazir{border:2px solid #16a34a}
 .line{cursor:pointer;font-size:14px}
 .line-grid{display:grid;grid-template-columns:90px 1fr 1fr 1fr 80px;gap:8px;align-items:center}
 .line-extras{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
@@ -76,23 +77,28 @@ let currentUser = JSON.parse(localStorage.getItem('korpcu')||'null');
 let qaimeler = [];
 let curNav = 'medaxil';
 
-// ---- Səhifələmə (Firestore read limitini azaltmaq üçün: hər tabda max 10 qaimə, lazım olanda çəkilir) ----
+// ---- Səhifələmə (Firestore read limitini azaltmaq üçün: hər tabda lazım olanda çəkilir) ----
 const PAGE_SIZE = 10;
+// Mədaxil olunub tabı üçün səhifə başına yalnız 5 qaimə
+const PAGE_SIZE_OVERRIDES = { kp_medaxil: 5 };
 let pg = {};
 async function pgLoad(key, whereFn, page){
-  if(!pg[key]) pg[key] = {cursors:[null], mode: currentUser.isKorUser?'fallback':null, page:1};
-  const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1;
+  const size = PAGE_SIZE_OVERRIDES[key] || PAGE_SIZE;
+  if(!pg[key]) pg[key] = {cursors:[null], mode: currentUser.isKorUser?'fallback':null, page:1, pageDocCount:{}};
+  const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1; st.pageSize = size;
   try{
     if(st.mode==='fallback') throw 0;
     for(let p=1;p<=page;p++){
       if(st.cursors[p]!==undefined) continue;
-      let q = whereFn().orderBy('createdAt','desc').limit(PAGE_SIZE);
-      if(st.cursors[p-1]) q = whereFn().orderBy('createdAt','desc').startAfter(st.cursors[p-1]).limit(PAGE_SIZE);
+      let q = whereFn().orderBy('createdAt','desc').limit(size);
+      if(st.cursors[p-1]) q = whereFn().orderBy('createdAt','desc').startAfter(st.cursors[p-1]).limit(size);
       const snap = await q.get();
       st.cursors[p] = snap.docs.length ? snap.docs[snap.docs.length-1] : (st.cursors[p-1]||null);
+      st.pageDocCount[p] = snap.docs.length;
       if(p===page) st.rows = snap.docs.map(d=>({id:d.id,...d.data()}));
     }
-    if(st.total==null){ try{ const c = await whereFn().count().get(); st.total = c.data().count; }catch(e){ st.total=st.rows?st.rows.length:0; } }
+    st.hasMore = (st.pageDocCount[page]||0) === size;
+    st.maxKnownPage = Math.max(st.maxKnownPage||1, page);
     st.mode = 'index';
   }catch(e){
     if(!st.all){
@@ -101,17 +107,27 @@ async function pgLoad(key, whereFn, page){
     }
     st.total = st.all.length;
     st.mode = 'fallback';
-    st.rows = st.all.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+    st.rows = st.all.slice((page-1)*size, page*size);
   }
   render();
 }
 function pgGoto(key, page){ pgLoad(key, pg[key].wf, page); }
 function pgButtons(key){
   const st = pg[key];
-  if(!st || !st.total || st.total<=PAGE_SIZE) return '';
-  const pages = Math.ceil(st.total/PAGE_SIZE);
+  if(!st) return '';
+  const size = st.pageSize || PAGE_SIZE;
+  if(st.mode==='fallback'){
+    if(!st.total || st.total<=size) return '';
+    const pages = Math.ceil(st.total/size);
+    let h = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">';
+    for(let i=1;i<=pages;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+    return h+'</div>';
+  }
+  const maxP = st.maxKnownPage||1;
+  if(maxP<=1 && !st.hasMore) return '';
   let h = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">';
-  for(let i=1;i<=pages;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+  for(let i=1;i<=maxP;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+  if(st.hasMore) h+=`<button class="sec" style="padding:4px 10px" onclick="pgGoto('${key}',${maxP+1})">Sonrakı ▶</button>`;
   return h+'</div>';
 }
 function searchList(key, whereFn, search){
@@ -235,23 +251,26 @@ function viewMedaxil(){
   if(search){ list = searchList('kp_medaxil_search', wf, search); }
   else{ if(!pg['kp_medaxil']) pgLoad('kp_medaxil', wf); list = (pg['kp_medaxil']&&pg['kp_medaxil'].rows)||[]; pager = pgButtons('kp_medaxil'); }
   list = list.filter(q=>q.qType!=='istehsalat');
+  // Hazır olmayanlar yuxarıda, hazır olanlar aşağıda görünsün (stabil sıralama: hər qrup daxilində tarix sırası qorunur)
+  list = list.slice().sort((a,b)=> (a.korpHazir===true?1:0) - (b.korpHazir===true?1:0));
   return `<div class="card">
     <h3>Mədaxil Olunmuş Qaimlər</h3>
     <input id="korpSearch" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
     <div class="line-grid small" style="font-weight:bold;padding:4px 8px;margin-top:10px">
       <span>Qaimə</span><span>Anbar</span><span>Kim üçün</span><span>İşləyən</span><span>Mədaxil №</span>
     </div>
-    ${list.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}
+    ${list.map(q=>rowHtml(q, true)).join('') || '<div class="small">Yoxdur</div>'}
     ${pager}
   </div>`;
 }
-function rowHtml(q){
+function rowHtml(q, showHazir){
   const orig = q.photos||[];
   const med = q.medaxilPhotos||[];
   const origThumb = orig[0] ? `<span><span class="small">Sifariş:</span> ${photoThumb(orig[0], orig)}</span>` : '';
   const medThumb = med[0] ? `<span><span class="small">Mədaxil:</span> ${photoThumb(med[0], med, 50, false)}</span>` : '<span class="small">mədaxil şəkli yoxdur</span>';
   const checked = q.korpChecked===true;
-  return `<div class="row ${isTecili(q)?'tecili':''} ${checked?'checked':''}">
+  const hazir = q.korpHazir===true;
+  return `<div class="row ${isTecili(q)?'tecili':''} ${checked?'checked':''} ${showHazir && hazir?'hazir':''}">
     <div class="line" onclick="toggleDetails('${q.id}')">
       <div class="line-grid">
         <span><b>Qaimə_${q.no}</b></span>
@@ -263,6 +282,7 @@ function rowHtml(q){
       <div class="line-extras">
         ${origThumb}${medThumb}
         ${checked?'<span class="badge" style="background:#16a34a">✓ Yoxlanılıb</span>':''}
+        ${showHazir && hazir?'<span class="badge" style="background:#16a34a">✓ Hazır</span>':''}
       </div>
     </div>
     <div class="details hidden" id="det_${q.id}">
@@ -271,6 +291,7 @@ function rowHtml(q){
       <div>Kim işlədi: ${q.isleyen||'—'}</div>
       <div>Mədaxil №: ${q.medaxilNo||'—'}</div>
       ${(q.korpMessages && q.korpMessages.length) ? '<div class="small">Problem bildirilib</div>' : `<button class="danger" style="margin-top:6px" onclick="openProblemModal('${q.id}')">Problem bildir</button>`}
+      ${showHazir ? `<button style="margin-top:8px;background:${hazir?'#16a34a':'#2563eb'}" onclick="event.stopPropagation();toggleHazir('${q.id}',${!hazir})">${hazir?'✓ Hazırdır (geri qaytar)':'Hazır'}</button>` : ''}
       ${isIlyas() ? `<label style="display:flex;align-items:center;gap:6px;width:auto;margin-top:8px">
         <input type="checkbox" style="width:auto" ${checked?'checked':''} onchange="toggleChecked('${q.id}',this.checked)"> Yoxlanıldı (bu qaimə şirkət sistemində yoxlanılıb)
       </label>` : ''}
@@ -279,6 +300,12 @@ function rowHtml(q){
 }
 async function toggleChecked(id, val){
   await db.collection('qaimeler').doc(id).update({korpChecked: val});
+}
+async function toggleHazir(id, val){
+  await db.collection('qaimeler').doc(id).update({korpHazir: val});
+  const q = findQ(id);
+  if(q) q.korpHazir = val;
+  render();
 }
 function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
 
@@ -413,5 +440,3 @@ function openViewer(photos, idx, blurable){
 </script>
 </body>
 </html>
-
-
