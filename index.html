@@ -132,6 +132,11 @@ let medPicked = [];
 let pendingQaimeler = [];
 let sending = false;
 let inFlight = new Set(); // eyni qaimənin paralel iki dəfə göndərilməsinin qarşısını alır
+const MED_PAGE_SIZE = 10;
+let medaxilPag = {}; // src -> {page, cursors, rows, total, unsub}
+let minePag = {page:1, cursors:[null], rows:[], total:null, unsub:null};
+let myMedaxilForBell = []; // mədaxil olunmuş, amma korporativdən açıq mesajı ola biləcək öz qaimələrim (zəng bildirişi üçün)
+let statsData = null;
 
 const IDB_NAME='qaimeOffline', IDB_STORE='pending';
 function idbOpen(){ return new Promise((res,rej)=>{ const req=indexedDB.open(IDB_NAME,1); req.onupgradeneeded=()=>req.result.createObjectStore(IDB_STORE,{keyPath:'localId'}); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
@@ -162,7 +167,7 @@ async function trySendOne(rec){
       return val;
     });
     await db.collection('qaimeler').add({
-      no, localId: rec.localId, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, kimUcunId: rec.kimUcunId||null, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
+      no, localId: rec.localId, qType:'sifaris', sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, kimUcunId: rec.kimUcunId||null, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
       tecili: rec.tecili, photos, photosUploading:false, status:'yeni', isleyen:null, problem:null,
       medaxilPhotos: [], medaxilPhotosUploading:false,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(), medaxilNo:null
@@ -252,14 +257,21 @@ function boot(){
   setupNav();
   loadPending();
   setupPush(db, currentUser.username);
-  db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
+  db.collection('qaimeler').where('status','in',['yeni','islemede','sorgu','tesdiqlenib']).orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
     render();
     renderBell();
     cleanupOld();
     if(currentUser.roles.includes('sifarisci')) checkNotifications();
-    if(currentUser.roles.includes('anbar')) checkSorguNotify(db);
-  });
+  }, err=>console.error('Əsas dinləmə xətası:', err));
+  if(currentUser.roles.includes('anbar')){
+    checkSorguNotify(db); // giriş anında mövcud sorğu sayını yoxla (sonrası üçün yalnız lazım olan yerlərdə çağırılır)
+    db.collection('qaimeler').where('isleyen','==',currentUser.name).where('status','==','medaxil').onSnapshot(snap=>{
+      myMedaxilForBell = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      renderBell();
+    }, err=>console.error('Bildiriş dinləmə xətası:', err));
+  }
+  cleanupOldMedaxil();
 }
 if(currentUser) boot();
 
@@ -269,6 +281,8 @@ function renderModeSwitch(){
   el.innerHTML = currentUser.roles.map(r=>`<button class="${currentUser.mode===r?'active':''}" onclick="switchMode('${r}')">${roleLabel(r)}</button>`).join('');
 }
 function switchMode(r){
+  if(curTab==='medaxil'){ stopMedaxilListen('sifaris'); stopMedaxilListen('istehsalat'); }
+  stopMineListen();
   currentUser.mode = r;
   localStorage.setItem('cu', JSON.stringify(currentUser));
   renderModeSwitch();
@@ -284,7 +298,12 @@ function setupNav(){
   el.innerHTML = tabs.map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   render();
 }
-function setNav(n){ curNav=n; curPage=1; render(); }
+function setNav(n){
+  if(curTab==='medaxil'){ stopMedaxilListen('sifaris'); stopMedaxilListen('istehsalat'); }
+  if(curNav==='mine' && n!=='mine') stopMineListen();
+  if(n==='stats') statsData = null;
+  curNav=n; curPage=1; render();
+}
 
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
@@ -306,6 +325,22 @@ function cleanupOld(){
       deleteQaimePhotos(q).finally(()=> db.collection('qaimeler').doc(q.id).delete().catch(()=>{}));
     }
   });
+}
+// 'medaxil' statusu artıq əsas canlı dinləmənin içində olmadığı üçün (oxu yükünü azaltmaq məqsədilə),
+// köhnə mədaxil sənədlərini ayrıca, dar (yalnız 3 aydan köhnə + status=medaxil) bir sorğu ilə tapıb təmizləyirik.
+// Bu, hər sessiyada bir dəfə çağırılır, canlı dinləmə deyil.
+async function cleanupOldMedaxil(){
+  try{
+    const cutoff = new Date(Date.now()-THREE_MONTHS_MS);
+    const snap = await db.collection('qaimeler').where('status','==','medaxil').where('createdAt','<',cutoff).get();
+    for(const doc of snap.docs){
+      if(cleanupDone.has(doc.id)) continue;
+      cleanupDone.add(doc.id);
+      const q = {id:doc.id, ...doc.data()};
+      try{ await deleteQaimePhotos(q); }catch(e){ console.error(e); }
+      await doc.ref.delete().catch(()=>{});
+    }
+  }catch(e){ console.error('cleanupOldMedaxil xətası:', e); }
 }
 
 function render(){
@@ -441,10 +476,33 @@ async function submitQaime(){
   trySendAll();
 }
 
+function mineBaseQuery(){
+  return db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).orderBy('createdAt','desc');
+}
+function stopMineListen(){ if(minePag.unsub){ minePag.unsub(); minePag.unsub=null; } }
+function mineGoPage(page){
+  stopMineListen();
+  minePag.page = page;
+  let q = mineBaseQuery().limit(MED_PAGE_SIZE);
+  const cur = minePag.cursors[page-1];
+  if(cur) q = q.startAfter(cur);
+  minePag.unsub = q.onSnapshot(snap=>{
+    minePag.rows = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(snap.docs.length) minePag.cursors[page] = snap.docs[snap.docs.length-1];
+    if(currentUser.mode==='sifarisci' && curNav==='mine') render();
+  }, err=>console.error('Mənim Qaimlərim dinləmə xətası:', err));
+  if(minePag.total==null){
+    mineBaseQuery().count().get().then(c=>{ minePag.total = c.data().count; if(curNav==='mine') render(); }).catch(e=>console.error(e));
+  }
+}
 function viewMine(){
-  const mine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
+  if(!minePag.unsub) mineGoPage(minePag.page||1);
   const pend = pendingQaimeler;
-  return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>${listHead()}${pend.map(r=>pendingRowHtml(r)).join('')}${mine.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}</div>`;
+  const rows = minePag.rows||[];
+  const total = minePag.total;
+  const pageCount = total!=null ? Math.max(1, Math.ceil(total/MED_PAGE_SIZE)) : (minePag.page||1);
+  const pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${minePag.page===i+1?'':'sec'}" style="padding:4px 10px" onclick="mineGoPage(${i+1})">${i+1}</button>`).join('')}</div>` : '';
+  return `<div class="card"><h3>Mənim Qaimlərim (${total!=null?total:'...'})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>${listHead()}${pend.map(r=>pendingRowHtml(r)).join('')}${rows.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}${pager}</div>`;
 }
 function pendingRowHtml(rec){
   return `<div class="row tecili">
@@ -464,28 +522,86 @@ function pendingRowHtml(rec){
   </div>`;
 }
 
+function medaxilBaseQuery(src){
+  return db.collection('qaimeler').where('status','==','medaxil').where('qType','==', src==='istehsalat'?'istehsalat':'sifaris').orderBy('createdAt','desc');
+}
+function stopMedaxilListen(src){
+  const st = medaxilPag[src];
+  if(st && st.unsub){ st.unsub(); st.unsub = null; }
+}
+function medaxilGoPage(src, page){
+  const st = medaxilPag[src] = medaxilPag[src] || {page:1, cursors:[null], rows:[], total:null, unsub:null};
+  stopMedaxilListen(src);
+  st.page = page;
+  let q = medaxilBaseQuery(src).limit(MED_PAGE_SIZE);
+  const cur = st.cursors[page-1];
+  if(cur) q = q.startAfter(cur);
+  st.unsub = q.onSnapshot(snap=>{
+    st.rows = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(snap.docs.length) st.cursors[page] = snap.docs[snap.docs.length-1];
+    if(curTab==='medaxil') render();
+  }, err=>console.error('Mədaxil dinləmə xətası:', err));
+  if(st.total==null){
+    medaxilBaseQuery(src).count().get().then(c=>{ st.total = c.data().count; if(curTab==='medaxil') render(); }).catch(e=>console.error(e));
+  }
+}
+function medaxilSearch(src, search){
+  medaxilPag.searchCache = medaxilPag.searchCache || {};
+  const key = src+'|'+search;
+  const sc = medaxilPag.searchCache;
+  if(!sc[key]){
+    sc[key] = {rows:[], loading:true};
+    medaxilBaseQuery(src).get().then(snap=>{
+      sc[key].rows = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      sc[key].loading = false;
+      if(curTab==='medaxil') render();
+    }).catch(e=>{ console.error(e); sc[key].loading=false; });
+  }
+  const s = search.toLowerCase();
+  return sc[key].rows.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(s) || (q.kimUcun||'').toLowerCase().includes(s));
+}
+function setCurTab(tab, src){
+  if(curTab==='medaxil' && tab!=='medaxil') stopMedaxilListen(src);
+  curTab = tab; curPage = 1;
+  render();
+}
 function viewAnbarList(src){
   src = src || 'sifaris';
   const scoped = qaimeler.filter(q=> src==='istehsalat' ? q.qType==='istehsalat' : q.qType!=='istehsalat');
   const problemCount = scoped.filter(q=>hasOpenProblem(q)).length;
   const tesdiqCount = scoped.filter(q=>q.status==='tesdiqlenib').length;
   const tabs = [['aktiv','Mədaxil olunmayanlar'],['islemede','İşləyirəm'],['sorgu','Sorğuda'],['tesdiqlenib','Təsdiq edilib'],['medaxil','Mədaxil Olan'],['tecili','Təcili'],['problemli','Problemli']];
-  let list = filterByTab(curTab, src);
   const search = document.getElementById('anbarSearch')?.value || '';
-  if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
-  if(curTab==='aktiv') list = list.slice().sort((a,b)=> tsMillis(a.createdAt)-tsMillis(b.createdAt));
-  else list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
-  const PAGE_SIZE = 10;
-  const pageCount = Math.max(1, Math.ceil(list.length/PAGE_SIZE));
-  if(curPage>pageCount) curPage = pageCount;
-  if(curPage<1) curPage = 1;
-  const pageList = list.slice((curPage-1)*PAGE_SIZE, curPage*PAGE_SIZE);
-  const pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${curPage===i+1?'':'sec'}" style="padding:4px 10px" onclick="curPage=${i+1};render()">${i+1}</button>`).join('')}</div>` : '';
+  let pageList, pager;
+  if(curTab==='medaxil'){
+    if(search){
+      pageList = medaxilSearch(src, search);
+      pager = '';
+    } else {
+      if(!medaxilPag[src] || !medaxilPag[src].unsub) medaxilGoPage(src, 1);
+      const st = medaxilPag[src];
+      pageList = (st && st.rows) || [];
+      const total = st ? st.total : null;
+      const pageCount = total!=null ? Math.max(1, Math.ceil(total/MED_PAGE_SIZE)) : ((st && st.page) || 1);
+      pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${(st.page===i+1)?'':'sec'}" style="padding:4px 10px" onclick="medaxilGoPage('${src}',${i+1})">${i+1}</button>`).join('')}</div>` : '';
+    }
+  } else {
+    let list = filterByTab(curTab, src);
+    if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
+    if(curTab==='aktiv') list = list.slice().sort((a,b)=> tsMillis(a.createdAt)-tsMillis(b.createdAt));
+    else list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
+    const PAGE_SIZE = 10;
+    const pageCount = Math.max(1, Math.ceil(list.length/PAGE_SIZE));
+    if(curPage>pageCount) curPage = pageCount;
+    if(curPage<1) curPage = 1;
+    pageList = list.slice((curPage-1)*PAGE_SIZE, curPage*PAGE_SIZE);
+    pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${curPage===i+1?'':'sec'}" style="padding:4px 10px" onclick="curPage=${i+1};render()">${i+1}</button>`).join('')}</div>` : '';
+  }
   const title = src==='istehsalat' ? 'İstehsalat Qaimləri' : 'Qaimlər';
   return `<div class="card">
     <h3>${title}</h3>
     <input id="anbarSearch" placeholder="Axtar (qaimə № / anbar)" value="${search}" oninput="curPage=1;render()">
-    <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="curTab='${t[0]}';curPage=1;render()">${t[1]}${t[0]==='problemli'&&problemCount?` <span class="badge">${problemCount}</span>`:''}${t[0]==='tesdiqlenib'&&tesdiqCount?` <span class="badge">${tesdiqCount}</span>`:''}</button>`).join('')}</div>
+    <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="setCurTab('${t[0]}','${src}')">${t[1]}${t[0]==='problemli'&&problemCount?` <span class="badge">${problemCount}</span>`:''}${t[0]==='tesdiqlenib'&&tesdiqCount?` <span class="badge">${tesdiqCount}</span>`:''}</button>`).join('')}</div>
     ${curTab==='aktiv'?`<button onclick="bulkTake()">İşlə (seçilənlər: ${selected.size})</button>`:''}
     ${curTab==='tesdiqlenib'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button class="sec" onclick="copyCodes('${src}')">Kodları kopyala</button><button onclick="bulkMedaxilFinal('${src}')">Mədaxil edildi (seçilənlər: ${selected.size})</button></div>`:''}
     <div style="margin-top:10px">${listHead()}${pageList.map(q=>rowHtml(q,true)).join('') || '<div class="small">Yoxdur</div>'}</div>
@@ -495,7 +611,6 @@ function viewAnbarList(src){
 function filterByTab(tab, src){
   src = src || 'sifaris';
   let list = qaimeler.filter(q=> src==='istehsalat' ? q.qType==='istehsalat' : q.qType!=='istehsalat');
-  if(tab==='medaxil') return list.filter(q=>q.status==='medaxil');
   if(tab==='sorgu') return list.filter(q=>q.status==='sorgu');
   if(tab==='tesdiqlenib') return list.filter(q=>q.status==='tesdiqlenib');
   if(tab==='problemli') return list.filter(q=>hasOpenProblem(q));
@@ -927,7 +1042,7 @@ async function saveResolve(id){
 function anbarMessages(){
   if(!currentUser.roles || !currentUser.roles.includes('anbar')) return [];
   const out = [];
-  qaimeler.forEach(q=>{
+  [...qaimeler, ...myMedaxilForBell].forEach(q=>{
     if(q.isleyen===currentUser.name && q.korpMessages && q.korpMessages.length){
       q.korpMessages.forEach((m,i)=>{ if(!m.solved) out.push({...m, qno:q.no, qid:q.id, idx:i}); });
     }
@@ -952,7 +1067,7 @@ function openBell(){
   </div></div>`;
 }
 function openMessageDetail(qid, idx){
-  const q = qaimeler.find(x=>x.id===qid);
+  const q = qaimeler.find(x=>x.id===qid) || myMedaxilForBell.find(x=>x.id===qid);
   const m = q.korpMessages[idx];
   pushModalHistory();
   document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box">
@@ -970,7 +1085,7 @@ function openMessageDetail(qid, idx){
 async function resolveMessage(qid, idx){
   const note = document.getElementById('bmSol').value.trim();
   if(!note) return;
-  const q = qaimeler.find(x=>x.id===qid);
+  const q = qaimeler.find(x=>x.id===qid) || myMedaxilForBell.find(x=>x.id===qid);
   const arr = q.korpMessages.slice();
   arr[idx] = {...arr[idx], solved:true, solution:note};
   await db.collection('qaimeler').doc(qid).update({korpMessages: arr});
@@ -996,52 +1111,81 @@ function dismissNotifications(){
 }
 
 function viewStats(){
-  const total = qaimeler.length;
-  const byStatus = {yeni:0, islemede:0, medaxil:0};
-  qaimeler.forEach(q=>byStatus[q.status]=(byStatus[q.status]||0)+1);
-  const problemli = qaimeler.filter(hasOpenProblem).length;
-  const tecili = qaimeler.filter(isTecili).length;
-
-  const days = [...Array(7)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return d; }).reverse();
-  const dayCounts = days.map(d=> qaimeler.filter(q=>{ if(!q.createdAt) return false; const qd=q.createdAt.toDate?q.createdAt.toDate():new Date(q.createdAt); return qd.toDateString()===d.toDateString(); }).length);
-  const maxC = Math.max(1,...dayCounts);
-  const chart = `<div class="bar-chart">${days.map((d,i)=>`<div class="small">${d.toLocaleDateString('az-AZ',{weekday:'short',day:'numeric'})}</div><div class="bg"><div class="fg" style="width:${(dayCounts[i]/maxC*100)||2}%">${dayCounts[i]}</div></div>`).join('')}</div>`;
+  if(!statsData || statsData.mode!==currentUser.mode) loadStats();
+  if(!statsData || statsData.loading){
+    return `<div class="card"><h3>Analitika</h3><div class="small">Yüklənir...</div></div>`;
+  }
+  const s = statsData;
+  const chart = `<div class="bar-chart">${s.days.map((d,i)=>`<div class="small">${d.toLocaleDateString('az-AZ',{weekday:'short',day:'numeric'})}</div><div class="bg"><div class="fg" style="width:${(s.dayCounts[i]/s.maxC*100)||2}%">${s.dayCounts[i]}</div></div>`).join('')}</div>`;
 
   let personal = '';
   if(currentUser.mode==='sifarisci'){
-    const mine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
-    const today = mine.filter(q=>isToday(q.createdAt)).length;
-    personal = `<div class="card"><h3>Mənim Statistikam</h3><div>Ümumi əlavə etdiyim: ${mine.length}</div><div>Bugün: ${today}</div></div>`;
+    personal = `<div class="card"><h3>Mənim Statistikam</h3><div>Ümumi əlavə etdiyim: ${s.mineTotal}</div><div>Bugün: ${s.mineToday}</div></div>`;
   }
   if(currentUser.mode==='anbar'){
-    const myWork = qaimeler.filter(q=>q.isleyen===currentUser.name);
-    const myMedaxilToday = myWork.filter(q=>q.status==='medaxil' && isToday(q.tookAt)).length;
-    const myActive = myWork.filter(q=>q.status==='islemede').length;
-    personal = `<div class="card"><h3>Mənim Statistikam</h3><div>Hazırda işlədiyim: ${myActive}</div><div>Bugün mədaxil etdiyim: ${myMedaxilToday}</div></div>`;
+    personal = `<div class="card"><h3>Mənim Statistikam</h3><div>Hazırda işlədiyim: ${s.myActive}</div><div>Bugün mədaxil etdiyim: ${s.myMedaxilToday}</div></div>`;
   }
 
   let anbarTable = '';
-  if(currentUser.mode==='anbar' || currentUser.mode==='admin'){
-    const workers = [...new Set(qaimeler.map(q=>q.isleyen).filter(Boolean))];
-    const weekAgo = Date.now()-7*86400000;
-    const rows = workers.map(w=>{
-      const wq = qaimeler.filter(q=>q.isleyen===w);
-      const active = wq.filter(q=>q.status==='islemede').length;
-      const medToday = wq.filter(q=>q.status==='medaxil' && isToday(q.tookAt)).length;
-      const medWeek = wq.filter(q=>q.status==='medaxil' && q.tookAt && (q.tookAt.toDate?q.tookAt.toDate():new Date(q.tookAt)).getTime()>weekAgo).length;
-      return `<tr><td>${w}</td><td>${active}</td><td>${medToday}</td><td>${medWeek}</td></tr>`;
-    }).join('');
-    anbarTable = `<div class="card"><h3>Anbar İşçiləri</h3><table><tr><th>Ad</th><th>Hazırda işlədiyi</th><th>Bugün mədaxil</th><th>Həftəlik mədaxil</th></tr>${rows}</table></div>`;
+  if(currentUser.mode==='anbar'){
+    const rows = s.workers.map(w=>`<tr><td>${w.name}</td><td>${w.active}</td><td>${w.medToday}</td><td>${w.medWeek}</td></tr>`).join('');
+    anbarTable = `<div class="card"><h3>Anbar İşçiləri</h3><table><tr><th>Ad</th><th>Hazırda işlədiyi</th><th>Bugün mədaxil</th><th>Həftəlik mədaxil</th></tr>${rows}</table><div class="small" style="margin-top:6px">Qeyd: "Həftəlik mədaxil" son 7 günə görə hesablanır.</div></div>`;
   }
 
   return `<div class="card"><h3>Ümumi Vəziyyət</h3>
-    <div>Ümumi qaimə: ${total}</div>
-    <div>Yeni: ${byStatus.yeni||0} | İşləmədə: ${byStatus.islemede||0} | Mədaxil olan: ${byStatus.medaxil||0}</div>
-    <div>Təcili: ${tecili} | Problemli: ${problemli}</div>
+    <div>Ümumi qaimə: ${s.total}</div>
+    <div>Yeni: ${s.byStatus.yeni||0} | İşləmədə: ${s.byStatus.islemede||0} | Mədaxil olan: ${s.byStatus.medaxil||0}</div>
+    <div>Təcili: ${s.tecili} | Problemli: ${s.problemli}</div>
     <h4>Son 7 gün</h4>${chart}
   </div>
   ${personal}
   ${anbarTable}`;
+}
+async function loadStats(){
+  statsData = {loading:true, mode: currentUser.mode};
+  try{
+    const weekAgo = new Date(Date.now()-7*86400000);
+    const [weekSnap, medCount, yeniCount, islemedeCount] = await Promise.all([
+      db.collection('qaimeler').where('createdAt','>=',weekAgo).get(),
+      db.collection('qaimeler').where('status','==','medaxil').count().get(),
+      db.collection('qaimeler').where('status','==','yeni').count().get(),
+      db.collection('qaimeler').where('status','==','islemede').count().get()
+    ]);
+    const weekDocs = weekSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    const sorguTesdiqActiv = qaimeler.filter(q=>q.status==='sorgu'||q.status==='tesdiqlenib').length;
+    const byStatus = {yeni: yeniCount.data().count, islemede: islemedeCount.data().count, medaxil: medCount.data().count};
+    const total = byStatus.yeni + byStatus.islemede + byStatus.medaxil + sorguTesdiqActiv;
+    const tecili = qaimeler.filter(isTecili).length;
+    const problemli = qaimeler.filter(hasOpenProblem).length;
+
+    const days = [...Array(7)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return d; }).reverse();
+    const dayCounts = days.map(d=> weekDocs.filter(q=>{ if(!q.createdAt) return false; const qd=q.createdAt.toDate?q.createdAt.toDate():new Date(q.createdAt); return qd.toDateString()===d.toDateString(); }).length);
+    const maxC = Math.max(1,...dayCounts);
+
+    let mineTotal=0, mineToday=0;
+    if(currentUser.mode==='sifarisci'){
+      const mineCount = await db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).count().get();
+      mineTotal = mineCount.data().count;
+      mineToday = weekDocs.filter(q=>q.sifarisVeren===currentUser.name && isToday(q.createdAt)).length;
+    }
+    let myActive=0, myMedaxilToday=0, workers=[];
+    if(currentUser.mode==='anbar'){
+      myActive = qaimeler.filter(q=>q.isleyen===currentUser.name && q.status==='islemede').length;
+      myMedaxilToday = weekDocs.filter(q=>q.isleyen===currentUser.name && q.status==='medaxil' && isToday(q.tookAt)).length;
+      const names = [...new Set([...qaimeler.map(q=>q.isleyen), ...weekDocs.map(q=>q.isleyen)].filter(Boolean))];
+      workers = names.map(w=>{
+        const active = qaimeler.filter(q=>q.isleyen===w && q.status==='islemede').length;
+        const medToday = weekDocs.filter(q=>q.isleyen===w && q.status==='medaxil' && isToday(q.tookAt)).length;
+        const medWeek = weekDocs.filter(q=>q.isleyen===w && q.status==='medaxil').length;
+        return {name:w, active, medToday, medWeek};
+      });
+    }
+    statsData = {loading:false, mode:currentUser.mode, total, byStatus, tecili, problemli, days, dayCounts, maxC, mineTotal, mineToday, myActive, myMedaxilToday, workers};
+  }catch(e){
+    console.error('Statistika yüklənmə xətası:', e);
+    statsData = {loading:false, mode:currentUser.mode, total:0, byStatus:{}, tecili:0, problemli:0, days:[], dayCounts:[], maxC:1, mineTotal:0, mineToday:0, myActive:0, myMedaxilToday:0, workers:[]};
+  }
+  if(curNav==='stats') render();
 }
 </script>
 </body>
