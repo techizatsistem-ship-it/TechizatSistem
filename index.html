@@ -321,6 +321,9 @@ function boot(){
     cleanupOld();
     if(currentUser.roles.includes('sifarisci')) checkNotifications();
     if(currentUser.roles.includes('anbar')) checkSorguNotify(db);
+  }, err=>{
+    console.error('qaimeler listener error:', err);
+    alert('Qaimələr yüklənmədi: '+err.message);
   });
 }
 if(currentUser) boot();
