@@ -253,16 +253,6 @@ function boot(){
     checkNotifications();
     if(curNav==='stats') render();
   });
-  db.collection('qaimeler').where('status','==','sorgu').onSnapshot(()=>{
-    delete pg['ist_sorgu'];
-    delete pg['ist_sorgu_search'];
-    if(curNav==='sorgu') render();
-  });
-  db.collection('qaimeler').where('status','==','tesdiqlenib').onSnapshot(()=>{
-    delete pg['ist_tesd'];
-    delete pg['ist_tesd_search'];
-    if(curNav==='tesdiqlenib') render();
-  });
   loadPending();
   render();
 }
