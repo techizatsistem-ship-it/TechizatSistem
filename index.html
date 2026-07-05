@@ -287,6 +287,7 @@ function setNav(n){ curNav=n; curPage=1; render(); }
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
+function tsMillis(ts){ if(!ts) return 0; return ts.toDate?ts.toDate().getTime():new Date(ts).getTime(); }
 function isTecili(q){ return q.status!=='medaxil' && (q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3)); }
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
 function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğuda':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
@@ -465,11 +466,13 @@ function viewAnbarList(src){
   src = src || 'sifaris';
   const scoped = qaimeler.filter(q=> src==='istehsalat' ? q.qType==='istehsalat' : q.qType!=='istehsalat');
   const problemCount = scoped.filter(q=>hasOpenProblem(q)).length;
+  const tesdiqCount = scoped.filter(q=>q.status==='tesdiqlenib').length;
   const tabs = [['aktiv','Mədaxil olunmayanlar'],['islemede','İşləyirəm'],['sorgu','Sorğuda'],['tesdiqlenib','Təsdiq edilib'],['medaxil','Mədaxil Olan'],['tecili','Təcili'],['problemli','Problemli']];
   let list = filterByTab(curTab, src);
   const search = document.getElementById('anbarSearch')?.value || '';
   if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
-  list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
+  if(curTab==='aktiv') list = list.slice().sort((a,b)=> tsMillis(a.createdAt)-tsMillis(b.createdAt));
+  else list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
   const PAGE_SIZE = 10;
   const pageCount = Math.max(1, Math.ceil(list.length/PAGE_SIZE));
   if(curPage>pageCount) curPage = pageCount;
@@ -480,7 +483,7 @@ function viewAnbarList(src){
   return `<div class="card">
     <h3>${title}</h3>
     <input id="anbarSearch" placeholder="Axtar (qaimə № / anbar)" value="${search}" oninput="curPage=1;render()">
-    <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="curTab='${t[0]}';curPage=1;render()">${t[1]}${t[0]==='problemli'&&problemCount?` <span class="badge">${problemCount}</span>`:''}</button>`).join('')}</div>
+    <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="curTab='${t[0]}';curPage=1;render()">${t[1]}${t[0]==='problemli'&&problemCount?` <span class="badge">${problemCount}</span>`:''}${t[0]==='tesdiqlenib'&&tesdiqCount?` <span class="badge">${tesdiqCount}</span>`:''}</button>`).join('')}</div>
     ${curTab==='aktiv'?`<button onclick="bulkTake()">İşlə (seçilənlər: ${selected.size})</button>`:''}
     ${curTab==='tesdiqlenib'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button class="sec" onclick="copyCodes('${src}')">Kodları kopyala</button><button onclick="bulkMedaxilFinal('${src}')">Mədaxil edildi (seçilənlər: ${selected.size})</button></div>`:''}
     <div style="margin-top:10px">${listHead()}${pageList.map(q=>rowHtml(q,true)).join('') || '<div class="small">Yoxdur</div>'}</div>
