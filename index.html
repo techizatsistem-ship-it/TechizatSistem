@@ -211,7 +211,7 @@ async function doLogin(){
     if(!nameSnap.empty) kUser = {id:nameSnap.docs[0].id, name:nameSnap.docs[0].data().name};
   }
   if(kUser && p==='7777'){
-    sessionStorage.setItem('korpcu', JSON.stringify({username:kUser.id, name:kUser.name, isKorUser:true, korUserId:kUser.id}));
+    localStorage.setItem('korpcu', JSON.stringify({username:kUser.id, name:kUser.name, isKorUser:true, korUserId:kUser.id}));
     location.href = 'korporativ.html'; return;
   }
   const snap = await db.collection('users').doc(u).get();
@@ -222,15 +222,15 @@ async function doLogin(){
   const d = snap.data();
   const roles = d.roles || (d.role ? [d.role] : []);
   if(roles.includes('admin')){
-    sessionStorage.setItem('admincu', JSON.stringify({username:u, name:d.name}));
+    localStorage.setItem('admincu', JSON.stringify({username:u, name:d.name}));
     location.href = 'admin.html'; return;
   }
   if(roles.includes('korporativ')){
-    sessionStorage.setItem('korpcu', JSON.stringify({username:u, name:d.name}));
+    localStorage.setItem('korpcu', JSON.stringify({username:u, name:d.name}));
     location.href = 'korporativ.html'; return;
   }
   if(roles.includes('istehsalat')){
-    sessionStorage.setItem('istehcu', JSON.stringify({username:u, name:d.name}));
+    localStorage.setItem('istehcu', JSON.stringify({username:u, name:d.name}));
     location.href = 'istehsalat.html'; return;
   }
   currentUser = {username:u, roles, mode:roles[0], name:d.name};
@@ -288,7 +288,14 @@ function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Dat
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function tsMillis(ts){ if(!ts) return 0; return ts.toDate?ts.toDate().getTime():new Date(ts).getTime(); }
-function isTecili(q){ return q.status!=='medaxil' && (q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3)); }
+function isTecili(q){ return q.status!=='medaxil' && q.tecili===true; }
+async function checkSorguNotify(){
+  try{
+    const c = await db.collection('qaimeler').where('status','==','sorgu').count().get();
+    const n = c.data().count;
+    if(n>0 && n%5===0) sendPushToRole(db, 'istehsalat', 'Sorğu bildirişi', `${n} ədəd sorğu var`);
+  }catch(e){ console.error('Sorğu bildiriş sayı xətası:', e); }
+}
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
 function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğuda':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
 function dlUrl(u){ return u.replace('/upload/','/upload/fl_attachment/'); }
@@ -852,6 +859,7 @@ async function saveMedaxil(id, isSorgu){
   await db.collection('qaimeler').doc(id).update(upd);
   const q = qaimeler.find(x=>x.id===id);
   if(!isSorgu && q && q.kimUcunId) sendPushToKorUser(db, q.kimUcunId, 'Mədaxil olundu', `Qaimə_${q.no} mədaxil olundu.`);
+  if(isSorgu) checkSorguNotify();
   closeModal();
   if(files.length){
     try{
