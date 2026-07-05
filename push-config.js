@@ -116,6 +116,27 @@ async function sendPushToRole(db, role, title, body) {
   }
 }
 
+// Sorğu statusundakı qaimə sayı 5-in mislinə (5, 10, 15...) çatanda bütün 'istehsalat'
+// rollu istifadəçilərə bildiriş göndərir. Son bildiriş edilən həddi Firestore-da saxlayır ki,
+// (a) eyni həddə görə iki dəfə bildiriş getməsin, (b) say bir dəfəyə bir neçə pillə artsa
+// (məs. 4-dən 7-yə) belə, keçilən hər həddə görə bildiriş qaçırılmasın.
+async function checkSorguNotify(db){
+  try{
+    const c = await db.collection('qaimeler').where('status','==','sorgu').count().get();
+    const n = c.data().count;
+    const threshold = Math.floor(n/5)*5;
+    const ref = db.collection('meta').doc('sorguNotify');
+    const shouldSend = await db.runTransaction(async t=>{
+      const snap = await t.get(ref);
+      const last = snap.exists ? (snap.data().lastNotified||0) : 0;
+      if(threshold === last) return false;
+      t.set(ref, {lastNotified: threshold}, {merge:true});
+      return threshold > last && threshold >= 5;
+    });
+    if(shouldSend) await sendPushToRole(db, 'istehsalat', 'Sorğu bildirişi', `${n} ədəd sorğu var`);
+  }catch(e){ console.error('Sorğu bildiriş sayı xətası:', e); }
+}
+
 // Adına görə istifadəçiyə bildiriş göndərir (users kolleksiyasında name sahəsi ilə axtarır).
 async function sendPushToName(db, name, title, body) {
   try {
