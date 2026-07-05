@@ -81,10 +81,22 @@ let curNav = 'medaxil';
 const PAGE_SIZE = 10;
 // Mədaxil olunub tabı üçün səhifə başına yalnız 5 qaimə
 const PAGE_SIZE_OVERRIDES = { kp_medaxil: 5 };
+// Bu açarlar üçün həmişə bütün sənədlər bir dəfəyə yaddaşa çəkilir və səhifələr
+// oradan (yenidən Firebase-ə getmədən) kəsilir. Bu, "Hazır" statusuna görə
+// BÜTÜN səhifələr üzrə qlobal sıralamanı mümkün edir (yalnız cari səhifə deyil).
+const FORCE_FALLBACK_KEYS = ['kp_medaxil'];
+function sortForKey(key, a, b){
+  if(key==='kp_medaxil'){
+    const ha = a.korpHazir===true?1:0, hb = b.korpHazir===true?1:0;
+    if(ha!==hb) return ha-hb; // hazır olmayanlar (0) əvvəl, hazır olanlar (1) sonra
+  }
+  return (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0);
+}
 let pg = {};
 async function pgLoad(key, whereFn, page){
   const size = PAGE_SIZE_OVERRIDES[key] || PAGE_SIZE;
-  if(!pg[key]) pg[key] = {cursors:[null], mode: currentUser.isKorUser?'fallback':null, page:1, pageDocCount:{}};
+  const forceFallback = currentUser.isKorUser || FORCE_FALLBACK_KEYS.includes(key);
+  if(!pg[key]) pg[key] = {cursors:[null], mode: forceFallback?'fallback':null, page:1, pageDocCount:{}};
   const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1; st.pageSize = size;
   try{
     if(st.mode==='fallback') throw 0;
@@ -103,13 +115,20 @@ async function pgLoad(key, whereFn, page){
   }catch(e){
     if(!st.all){
       const snap = await whereFn().get();
-      st.all = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+      st.all = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>sortForKey(key,a,b));
     }
     st.total = st.all.length;
     st.mode = 'fallback';
     st.rows = st.all.slice((page-1)*size, page*size);
   }
   render();
+}
+function resortFallback(key){
+  const st = pg[key];
+  if(st && st.mode==='fallback' && st.all){
+    st.all.sort((a,b)=>sortForKey(key,a,b));
+    st.rows = st.all.slice((st.page-1)*st.pageSize, st.page*st.pageSize);
+  }
 }
 function pgGoto(key, page){ pgLoad(key, pg[key].wf, page); }
 function pgButtons(key){
@@ -251,8 +270,6 @@ function viewMedaxil(){
   if(search){ list = searchList('kp_medaxil_search', wf, search); }
   else{ if(!pg['kp_medaxil']) pgLoad('kp_medaxil', wf); list = (pg['kp_medaxil']&&pg['kp_medaxil'].rows)||[]; pager = pgButtons('kp_medaxil'); }
   list = list.filter(q=>q.qType!=='istehsalat');
-  // Hazır olmayanlar yuxarıda, hazır olanlar aşağıda görünsün (stabil sıralama: hər qrup daxilində tarix sırası qorunur)
-  list = list.slice().sort((a,b)=> (a.korpHazir===true?1:0) - (b.korpHazir===true?1:0));
   return `<div class="card">
     <h3>Mədaxil Olunmuş Qaimlər</h3>
     <input id="korpSearch" placeholder="Axtar (ad / qaimə № / anbar)" value="${search}" oninput="render()">
@@ -305,6 +322,7 @@ async function toggleHazir(id, val){
   await db.collection('qaimeler').doc(id).update({korpHazir: val});
   const q = findQ(id);
   if(q) q.korpHazir = val;
+  resortFallback('kp_medaxil');
   render();
 }
 function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
