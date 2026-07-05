@@ -173,7 +173,4 @@ async function sendPushToName(db, name, title, body) {
   }
 }
 
-
-
-
  
