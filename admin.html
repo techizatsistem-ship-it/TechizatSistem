@@ -93,10 +93,14 @@ async function pgLoad(key, whereFn, page){
     if(st.total==null){ try{ const c = await whereFn().count().get(); st.total = c.data().count; }catch(e){ st.total=st.rows?st.rows.length:0; } }
     st.mode = 'index';
   }catch(e){
-    if(e) console.warn('Pagination indeksi yoxdur, ehtiyat rejiminə keçildi (Firebase konsolunda təklif olunan indeks linkinə klikləsəniz sürətlənər):', e);
+    if(e) console.warn('Pagination indeksi yoxdur, ehtiyat rejiminə keçildi:', e);
     if(!st.all){
       const snap = await whereFn().get();
-      st.all = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+      st.all = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>{
+        const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        return tB - tA;
+      });
     }
     st.total = st.all.length;
     st.mode = 'fallback';
@@ -139,7 +143,7 @@ function boot(){
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   db.collection('users').onSnapshot(snap=>{ users = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
   db.collection('failedDeletes').orderBy('at','desc').onSnapshot(snap=>{ failedDeletes = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
-  ['yeni','islemede'].forEach(st=>{
+  ['yeni','islemede','medaxil'].forEach(st=>{
     db.collection('qaimeler').where('status','==',st).onSnapshot(()=>{
       const key = 'admin_'+st;
       delete pg[key]; delete pg[key+'_search'];
