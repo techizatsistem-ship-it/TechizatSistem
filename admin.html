@@ -150,10 +150,7 @@ function boot(){
     if(curNav==='qaimeler' && qStatusFilter===st) render();
   });
 });
-  db.collection('qaimeler').where('checked','==',true).onSnapshot(()=>{
-    delete pg['admin_checked']; delete pg['admin_checked_search'];
-    if(curNav==='qaimeler' && qStatusFilter==='checked') render();
-  });
+
   render();
 }
 if(currentUser) boot(); else location.href = 'index.html';
