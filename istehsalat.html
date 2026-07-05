@@ -222,6 +222,7 @@ function boot(){
   document.getElementById('navTabs').innerHTML = [['add','Qaimə Əlavə Et'],['mine','Mənim Qaimlərim'],['sorgu','Sorğu'],['tesdiqlenib','Təsdiq edilib'],['medaxiledilib','Mədaxil edilib'],['stats','Analitika']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   setupPush(db, currentUser.username);
+  checkSorguNotify(db);
   // Yalnız bu istifadəçinin özünün əlavə etdiyi qaimələr canlı izlənir (problem bildirişi üçün) — bütün kolleksiya deyil.
   db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).onSnapshot(snap=>{
     myQaimeler = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(q=>q.qType==='istehsalat');
@@ -308,13 +309,14 @@ function reviewRow(q, isSorgu){
     ${isSorgu?`<button style="margin-top:6px" onclick="confirmSorgu('${q.id}')">Təsdiq edildi</button>`:`<button class="sec" style="margin-top:6px" onclick="revertTesdiq('${q.id}')">Geri çək</button>`}
   </div>`;
 }
-async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib', tesdiqEden: currentUser.name}); pg={}; render(); }
+async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib', tesdiqEden: currentUser.name}); pg={}; render(); checkSorguNotify(db); }
 async function revertTesdiq(id){
   const q = reviewQaimeler.find(x=>x.id===id) || qaimeler.find(x=>x.id===id);
   if(q && q.status==='medaxil'){ alert('Mədaxil edilmiş qaimə geri çəkilə bilməz.'); return; }
   await db.collection('qaimeler').doc(id).update({status:'sorgu'});
   pg={};
   render();
+  checkSorguNotify(db);
 }
 function viewAddForm(){
   const anbarList = [...new Set(myQaimeler.map(q=>q.anbar).filter(Boolean))];
