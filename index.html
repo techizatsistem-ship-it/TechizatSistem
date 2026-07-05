@@ -157,7 +157,7 @@ async function trySendOne(rec){
       const ref = db.collection('meta').doc('counter');
       const snap = await t.get(ref);
       const val = (snap.exists? snap.data().value:0)+1;
-      t.set(ref,{value:val});
+      t.set(ref,{value:val}, {merge:true});
       return val;
     });
     await db.collection('qaimeler').add({
