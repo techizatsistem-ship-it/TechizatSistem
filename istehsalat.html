@@ -36,7 +36,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 .modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:50;padding:10px}
 .modal .box{background:#fff;padding:16px;border-radius:8px;max-width:420px;width:100%;max-height:90vh;overflow:auto}
 #viewerModal{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;z-index:60}
-#viewerModal img{max-width:100%;max-height:80vh;margin:auto;transition:transform .2s}
+#viewerModal img{max-width:100%;max-height:80vh;margin:0;transition:transform .15s;position:absolute;top:50%;left:50%}
 #viewerModal .bar{display:flex;gap:8px;padding:10px;justify-content:center;flex-wrap:wrap}
 .badge{background:#c0392b;color:#fff;border-radius:12px;padding:2px 8px;font-size:12px}
 .small{font-size:12px;color:#666}
@@ -189,7 +189,7 @@ async function trySendOne(rec){
       t.set(ref,{value:val});
       return val;
     });
-    await db.collection('qaimeler').add({
+    const ref = await db.collection('qaimeler').add({
       no, localId: rec.localId, sifarisVeren: rec.sifarisVeren, anbar: rec.anbar, kimUcun: rec.kimUcun, kimUcunId: rec.kimUcunId||null, odenisTipi: rec.odenisTipi, qeyd: rec.qeyd,
       tecili: rec.tecili, photos, photosUploading:false, status:'yeni', isleyen:null, problem:null,
       medaxilPhotos: [], medaxilPhotosUploading:false, qType:'istehsalat',
@@ -198,7 +198,15 @@ async function trySendOne(rec){
     if(rec.kimUcunId) sendPushToKorUser(db, rec.kimUcunId, 'Yeni sifariş', `Qaimə_${no} sizin üçün qeydə alındı.`);
     await idbDelete(rec.localId);
     pendingQaimeler = pendingQaimeler.filter(x=>x.localId!==rec.localId);
+    const mineCache = pg['ist_mine'];
     pg={}; statsData=null;
+    if(mineCache){
+      const newQ = { id:ref.id, no, localId:rec.localId, sifarisVeren:rec.sifarisVeren, anbar:rec.anbar, kimUcun:rec.kimUcun, kimUcunId:rec.kimUcunId||null, odenisTipi:rec.odenisTipi, qeyd:rec.qeyd, tecili:rec.tecili, photos, photosUploading:false, status:'yeni', isleyen:null, problem:null, medaxilPhotos:[], medaxilPhotosUploading:false, qType:'istehsalat', createdAt:new Date(), medaxilNo:null };
+      mineCache.rows = [newQ, ...(mineCache.rows||[])];
+      if(mineCache.all) mineCache.all = [newQ, ...mineCache.all];
+      if(mineCache.total!=null) mineCache.total++;
+      pg['ist_mine'] = mineCache;
+    }
     render();
     return true;
   }catch(e){ console.error(e); return false; }
@@ -325,7 +333,7 @@ function reviewRow(q, isSorgu){
     ${isSorgu?`<button style="margin-top:6px" onclick="confirmSorgu('${q.id}')">Təsdiq edildi</button>`:`<button class="sec" style="margin-top:6px" onclick="revertTesdiq('${q.id}')">Geri çək</button>`}
   </div>`;
 }
-async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib'}); pg={}; render(); }
+async function confirmSorgu(id){ await db.collection('qaimeler').doc(id).update({status:'tesdiqlenib', tesdiqEden: currentUser.name}); pg={}; render(); }
 async function revertTesdiq(id){
   const q = reviewQaimeler.find(x=>x.id===id) || qaimeler.find(x=>x.id===id);
   if(q && q.status==='medaxil'){ alert('Mədaxil edilmiş qaimə geri çəkilə bilməz.'); return; }
@@ -580,7 +588,7 @@ async function deleteQaime(id){
 }
 
 function openViewer(photos, idx){
-  let rotate = 0, scale = 1, pinchDist = null;
+  let rotate = 0, scale = 1, panX = 0, panY = 0, pinchDist = null;
   document.getElementById('modalRoot').innerHTML = `<div id="viewerModal">
     <div class="bar">
       <button class="sec" onclick="closeModal()">Bağla</button>
@@ -591,35 +599,51 @@ function openViewer(photos, idx){
       <button id="vPrint">🖨 Çap et</button>
       <a id="vDl"><button>Yüklə</button></a>
     </div>
-    <div id="vWrap" style="flex:1;overflow:hidden;display:flex;touch-action:none">
-      <img id="vImg" style="max-width:100%;max-height:80vh;margin:auto">
+    <div id="vWrap" style="flex:1;overflow:hidden;display:flex;touch-action:none;position:relative">
+      <img id="vImg" style="max-width:100%;max-height:80vh">
     </div>
   </div>`;
   document.getElementById('vPrint').onclick = ()=> printImage(photos[idx]);
   const img = document.getElementById('vImg');
+  const wrap = document.getElementById('vWrap');
+  function applyTransform(){
+    img.style.transform = `translate(-50%,-50%) translate(${panX}px, ${panY}px) rotate(${rotate}deg) scale(${scale})`;
+  }
   function update(){
     img.src = photos[idx];
-    img.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+    applyTransform();
     document.getElementById('vCount').innerText = (idx+1)+'/'+photos.length;
     document.getElementById('vDl').href = photos[idx].replace('/upload/','/upload/fl_attachment/');
   }
-  document.getElementById('vPrev').onclick = ()=>{ idx=(idx-1+photos.length)%photos.length; rotate=0; scale=1; update(); };
-  document.getElementById('vNext').onclick = ()=>{ idx=(idx+1)%photos.length; rotate=0; scale=1; update(); };
-  document.getElementById('vRotate').onclick = ()=>{ rotate=(rotate+90)%360; update(); };
-  const wrap = document.getElementById('vWrap');
+  document.getElementById('vPrev').onclick = ()=>{ idx=(idx-1+photos.length)%photos.length; rotate=0; scale=1; panX=0; panY=0; update(); };
+  document.getElementById('vNext').onclick = ()=>{ idx=(idx+1)%photos.length; rotate=0; scale=1; panX=0; panY=0; update(); };
+  document.getElementById('vRotate').onclick = ()=>{ rotate=(rotate+90)%360; applyTransform(); };
   wrap.addEventListener('wheel', e=>{
     e.preventDefault();
-    scale = Math.max(0.5, Math.min(5, scale + (e.deltaY<0?0.15:-0.15)));
-    img.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+    const rect = wrap.getBoundingClientRect();
+    const cx = e.clientX - rect.left - rect.width/2;
+    const cy = e.clientY - rect.top - rect.height/2;
+    const newScale = Math.max(0.5, Math.min(5, scale + (e.deltaY<0?0.15:-0.15)));
+    panX = cx - (cx - panX) * (newScale/scale);
+    panY = cy - (cy - panY) * (newScale/scale);
+    scale = newScale;
+    applyTransform();
   }, {passive:false});
   wrap.addEventListener('touchmove', e=>{
     if(e.touches.length===2){
       e.preventDefault();
-      const dx = e.touches[0].clientX-e.touches[1].clientX, dy = e.touches[0].clientY-e.touches[1].clientY;
+      const t0 = e.touches[0], t1 = e.touches[1];
+      const dx = t0.clientX-t1.clientX, dy = t0.clientY-t1.clientY;
       const dist = Math.hypot(dx,dy);
+      const rect = wrap.getBoundingClientRect();
+      const midX = (t0.clientX+t1.clientX)/2 - rect.left - rect.width/2;
+      const midY = (t0.clientY+t1.clientY)/2 - rect.top - rect.height/2;
       if(pinchDist!=null){
-        scale = Math.max(0.5, Math.min(5, scale*(dist/pinchDist)));
-        img.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+        const newScale = Math.max(0.5, Math.min(5, scale*(dist/pinchDist)));
+        panX = midX - (midX - panX) * (newScale/scale);
+        panY = midY - (midY - panY) * (newScale/scale);
+        scale = newScale;
+        applyTransform();
       }
       pinchDist = dist;
     }
