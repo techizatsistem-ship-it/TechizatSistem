@@ -809,16 +809,17 @@ function openMedaxilModal(id, isSorgu){
     <h3>${isSorgu?'Sorğuya göndər':'Mədaxil edildi'}</h3>
     <label>Qaimə nömrəsi *</label>
     <input id="medNo">
-    <label>Mədaxil şəkli</label>
+    <label>Mədaxil şəkli *</label>
     <div style="display:flex;gap:6px">
       <input type="file" id="med_file" accept="image/*" multiple style="display:none" onchange="onMedPick(event)">
       <button type="button" class="sec" onclick="document.getElementById('med_file').click()">🖼 Şəkil seç</button>
     </div>
     <div class="pastebox" id="medPasteZone" tabindex="0">Şəkli kopyalayıb buraya klikləyib Ctrl+V edin</div>
     <div class="imgpick" id="medPreview"></div>
+    <div id="medErr" class="small" style="color:red"></div>
     <div style="display:flex;gap:6px;margin-top:10px">
       <button onclick="closeModal()" class="sec">Ləğv et</button>
-      <button onclick="saveMedaxil('${id}',${isSorgu?'true':'false'})">OK</button>
+      <button id="medOkBtn" onclick="saveMedaxil('${id}',${isSorgu?'true':'false'})">OK</button>
     </div>
   </div></div>`;
   document.getElementById('medPasteZone').focus();
@@ -835,6 +836,8 @@ function renderMedPreview(){
   el.innerHTML = medPicked.map((p,i)=>
     `<div style="position:relative"><img src="${p.url}" onclick="openViewer(${JSON.stringify(urls).replace(/"/g,'&quot;')},${i})"><button onclick="event.stopPropagation();medPicked.splice(${i},1);renderMedPreview()" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;padding:0;border-radius:50%;background:#c0392b">×</button></div>`
   ).join('');
+  const err = document.getElementById('medErr');
+  if(err && medPicked.length) err.innerText = '';
 }
 document.addEventListener('paste', e=>{
   if(!document.getElementById('medPreview')) return;
@@ -851,27 +854,33 @@ document.addEventListener('paste', e=>{
 });
 async function saveMedaxil(id, isSorgu){
   const no = document.getElementById('medNo').value.trim();
-  if(!no) return;
+  const err = document.getElementById('medErr');
+  if(!no){ if(err) err.innerText = 'Qaimə nömrəsi mütləqdir'; return; }
+  if(medPicked.length===0){ if(err) err.innerText = 'Mədaxil şəkli mütləqdir'; return; }
+  if(err) err.innerText = '';
   const files = medPicked; medPicked = [];
+  const btn = document.getElementById('medOkBtn');
+  if(btn){ btn.disabled = true; btn.innerText = 'Göndərilir...'; }
+  let photos;
+  try{
+    photos = [];
+    for(const p of files){ const blob = await compressImage(p.file); photos.push(await uploadToCloudinary(blob)); }
+  }catch(e){
+    console.error(e);
+    medPicked = files;
+    renderMedPreview();
+    if(btn){ btn.disabled = false; btn.innerText = 'OK'; }
+    if(err) err.innerText = 'Şəkil yüklənərkən xəta baş verdi. Yenidən cəhd edin.';
+    return;
+  }
   const newStatus = isSorgu ? 'sorgu' : 'medaxil';
-  const upd = {status:newStatus, medaxilNo:no, medaxilPhotosUploading: files.length>0};
+  const upd = {status:newStatus, medaxilNo:no, medaxilPhotos:photos, medaxilPhotosUploading:false};
   if(!isSorgu) upd.tecili = false;
   await db.collection('qaimeler').doc(id).update(upd);
   const q = qaimeler.find(x=>x.id===id);
   if(!isSorgu && q && q.kimUcunId) sendPushToKorUser(db, q.kimUcunId, 'Mədaxil olundu', `Qaimə_${q.no} mədaxil olundu.`);
   if(isSorgu) checkSorguNotify();
   closeModal();
-  if(files.length){
-    try{
-      const arr = [];
-      for(const p of files){ const blob = await compressImage(p.file); arr.push(await uploadToCloudinary(blob)); }
-      await db.collection('qaimeler').doc(id).update({medaxilPhotos: arr, medaxilPhotosUploading:false});
-    }catch(e){
-      console.error(e);
-      await db.collection('qaimeler').doc(id).update({medaxilPhotosUploading:false});
-      alert('Şəkil yüklənərkən xəta baş verdi. Yenidən cəhd edin.');
-    }
-  }
 }
 
 function openResolveModal(id){
