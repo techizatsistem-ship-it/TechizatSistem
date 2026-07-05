@@ -407,124 +407,13 @@ function viewAddForm(){
     <button id="submitBtn" style="margin-top:12px" onclick="submitQaime()">Əlavə Et</button>
   </div>`;
 }
-// ---- Sifariş şəkli mövqe redaktoru (korporativ.html-dəki blur xəttinə uyğunlaşdırmaq üçün) ----
-let editQueue = [];
-let editState = null;
 function onPick(e){
-  const files = [...e.target.files];
+  [...e.target.files].forEach(f=>{
+    const url = URL.createObjectURL(f);
+    pickedFiles.push({file:f, url});
+  });
   e.target.value='';
-  if(files.length===0) return;
-  editQueue.push(...files);
-  if(!editState) startNextEdit();
-}
-function startNextEdit(){
-  const file = editQueue.shift();
-  if(!file){ editState=null; return; }
-  const url = URL.createObjectURL(file);
-  const img = new Image();
-  img.onload = ()=>{
-    const frameW = Math.min(340, window.innerWidth-60);
-    const frameH = Math.round(frameW*0.75);
-    const s0 = Math.max(frameW/img.naturalWidth, frameH/img.naturalHeight);
-    editState = {file, img, url, frameW, frameH, s0, zoom:1.35, offsetX:0};
-    renderEditor();
-  };
-  img.src = url;
-}
-function renderEditor(){
-  const st = editState;
-  const scale = st.s0*st.zoom;
-  const dW = st.img.naturalWidth*scale, dH = st.img.naturalHeight*scale;
-  const maxOff = Math.max(0,(dW-st.frameW)/2);
-  st.offsetX = Math.max(-maxOff, Math.min(maxOff, st.offsetX));
-  const left = (st.frameW-dW)/2 + st.offsetX;
-  const top = (st.frameH-dH)/2;
-  document.getElementById('modalRoot').innerHTML = `<div class="modal"><div class="box" style="max-width:${st.frameW+40}px">
-    <h3>Şəklin mövqeyini tənzimlə</h3>
-    <div class="small">Qırmızı xətt korporativ tərəfdə blurun başladığı nöqtədir. Gizlədilməli olan hissə (qiymət və s.) xəttin <b>sağında</b> qalmalıdır. Şəkli sağa-sola çəkin.</div>
-    <div id="posFrame" style="position:relative;width:${st.frameW}px;height:${st.frameH}px;overflow:hidden;margin:10px auto;background:#000;border-radius:6px;touch-action:none;cursor:grab">
-      <img id="posImg" src="${st.url}" draggable="false" style="position:absolute;left:${left}px;top:${top}px;width:${dW}px;height:${dH}px;user-select:none;pointer-events:none">
-      <div style="position:absolute;top:0;bottom:0;left:50%;width:2px;background:red;transform:translateX(-1px);pointer-events:none"></div>
-    </div>
-    <label>Yaxınlaşdırma (lazım gələrsə daha çox sürüşdürmək üçün artırın)</label>
-    <input type="range" id="posZoom" min="100" max="300" value="${Math.round(st.zoom*100)}" oninput="onZoomChange(this.value)">
-    <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
-      <button onclick="confirmEdit()">Təsdiqlə</button>
-      <button class="sec" onclick="skipEdit()">Redaktəsiz əlavə et</button>
-      <button class="danger" onclick="cancelEdit()">İmtina et</button>
-    </div>
-  </div></div>`;
-  setupDrag();
-}
-function setupDrag(){
-  const frame = document.getElementById('posFrame');
-  let dragging=false, startX=0, startOff=0;
-  frame.onpointerdown = (e)=>{
-    dragging=true; startX=e.clientX; startOff=editState.offsetX;
-    try{ frame.setPointerCapture(e.pointerId); }catch(_){}
-    frame.style.cursor='grabbing';
-  };
-  frame.onpointermove = (e)=>{
-    if(!dragging) return;
-    editState.offsetX = startOff + (e.clientX-startX);
-    updateImgPosition();
-  };
-  const stop = ()=>{ dragging=false; frame.style.cursor='grab'; };
-  frame.onpointerup = stop;
-  frame.onpointercancel = stop;
-  frame.onpointerleave = stop;
-}
-function updateImgPosition(){
-  const st = editState;
-  const scale = st.s0*st.zoom;
-  const dW = st.img.naturalWidth*scale;
-  const maxOff = Math.max(0,(dW-st.frameW)/2);
-  st.offsetX = Math.max(-maxOff, Math.min(maxOff, st.offsetX));
-  const left = (st.frameW-dW)/2 + st.offsetX;
-  document.getElementById('posImg').style.left = left+'px';
-}
-function onZoomChange(v){
-  const st = editState;
-  st.zoom = v/100;
-  const scale = st.s0*st.zoom;
-  const dW = st.img.naturalWidth*scale, dH = st.img.naturalHeight*scale;
-  const img = document.getElementById('posImg');
-  img.style.width = dW+'px'; img.style.height = dH+'px';
-  img.style.top = ((st.frameH-dH)/2)+'px';
-  updateImgPosition();
-}
-function confirmEdit(){
-  const st = editState;
-  const scale = st.s0*st.zoom;
-  const dW = st.img.naturalWidth*scale, dH = st.img.naturalHeight*scale;
-  const left = (st.frameW-dW)/2 + st.offsetX;
-  const top = (st.frameH-dH)/2;
-  const sx = (-left)/scale, sy = (-top)/scale, sw = st.frameW/scale, sh = st.frameH/scale;
-  const c = document.createElement('canvas');
-  c.width = Math.max(1,Math.round(sw)); c.height = Math.max(1,Math.round(sh));
-  const ctx = c.getContext('2d');
-  ctx.drawImage(st.img, sx, sy, sw, sh, 0, 0, c.width, c.height);
-  c.toBlob(blob=>{
-    const newFile = new File([blob], (st.file.name||'photo.jpg'), {type:'image/jpeg'});
-    pickedFiles.push({file:newFile, url:URL.createObjectURL(blob)});
-    URL.revokeObjectURL(st.url);
-    renderPreview();
-    finishEdit();
-  }, 'image/jpeg', 0.92);
-}
-function skipEdit(){
-  pickedFiles.push({file: editState.file, url: editState.url});
   renderPreview();
-  finishEdit();
-}
-function cancelEdit(){
-  URL.revokeObjectURL(editState.url);
-  finishEdit();
-}
-function finishEdit(){
-  editState = null;
-  if(editQueue.length){ startNextEdit(); }
-  else { document.getElementById('modalRoot').innerHTML=''; }
 }
 function renderPreview(){
   const urls = pickedFiles.map(p=>p.url);
