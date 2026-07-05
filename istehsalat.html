@@ -262,7 +262,7 @@ function render(){
 
 function viewSorgu(){
   const search = document.getElementById('sorguSearch')?.value || '';
-  const wf = ()=> db.collection('qaimeler').where('status','==','sorgu');
+  const wf = ()=> db.collection('qaimeler').where('status','==','sorgu').where('sifarisVeren','==',currentUser.name);
   let list, pager='';
   if(search){ list = searchList('ist_sorgu_search', wf, search); }
   else{ if(!pg['ist_sorgu']) pgLoad('ist_sorgu', wf); list = (pg['ist_sorgu']&&pg['ist_sorgu'].rows)||[]; pager = pgButtons('ist_sorgu'); }
@@ -274,7 +274,7 @@ function viewSorgu(){
 }
 function viewTesdiqlenib(){
   const search = document.getElementById('tesdSearch')?.value || '';
-  const wf = ()=> db.collection('qaimeler').where('status','==','tesdiqlenib');
+  const wf = ()=> db.collection('qaimeler').where('status','==','tesdiqlenib').where('sifarisVeren','==',currentUser.name);
   let list, pager='';
   if(search){ list = searchList('ist_tesd_search', wf, search); }
   else{ if(!pg['ist_tesd']) pgLoad('ist_tesd', wf); list = (pg['ist_tesd']&&pg['ist_tesd'].rows)||[]; pager = pgButtons('ist_tesd'); }
