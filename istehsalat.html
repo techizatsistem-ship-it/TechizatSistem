@@ -248,10 +248,10 @@ function boot(){
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   setupPush(db, currentUser.username);
   // Yalnız bu istifadəçinin özünün əlavə etdiyi qaimələr canlı izlənir (problem bildirişi üçün) — bütün kolleksiya deyil.
-  db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).onSnapshot(snap=>{
-    myQaimeler = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(q=>q.qType==='istehsalat');
-    checkNotifications();
-    if(curNav==='stats') render();
+  db.collection('qaimeler').where('status','==','sorgu').onSnapshot(()=>{
+    delete pg['ist_sorgu'];
+    delete pg['ist_sorgu_search'];
+    if(curNav==='sorgu') render();
   });
   loadPending();
   render();
