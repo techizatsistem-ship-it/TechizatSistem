@@ -231,6 +231,13 @@ function boot(){
     if(curNav==='stats') render();
   });
   loadPending();
+  ['sorgu','tesdiqlenib'].forEach(st=>{
+    const key = st==='sorgu' ? 'ist_sorgu' : 'ist_tesd';
+    db.collection('qaimeler').where('status','==',st).onSnapshot(()=>{
+      delete pg[key]; delete pg[key+'_search'];
+      if(curNav===st) render();
+    });
+  });
   render();
 }
 if(currentUser) boot(); else location.href = 'index.html';
