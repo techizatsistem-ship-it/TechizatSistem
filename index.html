@@ -132,67 +132,7 @@ let medPicked = [];
 let pendingQaimeler = [];
 let sending = false;
 let inFlight = new Set(); // eyni qaimənin paralel iki dəfə göndərilməsinin qarşısını alır
-
-// Mədaxil olunmuş qaimələr artıq real-time siyahıya daxil edilmir, lazımi olanda səhifə-səhifə Firestore-dan çəkilir
-let curPageMed = 1;
-let medCache = {sifaris:{}, istehsalat:{}};
-let medCursor = {sifaris:{}, istehsalat:{}};
-let medCount = {sifaris:null, istehsalat:null};
-let mineMedCache = {};
-let mineMedCursor = {};
-let mineMedCount = null;
-let statsMedTotal = null;
-async function ensureMedCount(src){
-  if(medCount[src]!=null) return;
-  const agg = await db.collection('qaimeler').where('qType','==',src).where('status','==','medaxil').count().get();
-  medCount[src] = agg.data().count;
-  render();
-}
-async function fetchMedPage(src, page){
-  if(medCache[src][page]) return;
-  if(page>1 && !medCursor[src][page-1]) await fetchMedPage(src, page-1);
-  let q = db.collection('qaimeler').where('qType','==',src).where('status','==','medaxil').orderBy('createdAt','desc');
-  if(page>1 && medCursor[src][page-1]) q = q.startAfter(medCursor[src][page-1]);
-  const snap = await q.limit(10).get();
-  medCache[src][page] = snap.docs.map(d=>({id:d.id, ...d.data()}));
-  medCursor[src][page] = snap.docs[snap.docs.length-1] || medCursor[src][page-1] || null;
-  render();
-}
-async function ensureMineMedCount(){
-  if(mineMedCount!=null) return;
-  const agg = await db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).where('status','==','medaxil').count().get();
-  mineMedCount = agg.data().count;
-  render();
-}
-async function fetchMineMedPage(page){
-  if(mineMedCache[page]) return;
-  if(page>1 && !mineMedCursor[page-1]) await fetchMineMedPage(page-1);
-  let q = db.collection('qaimeler').where('sifarisVeren','==',currentUser.name).where('status','==','medaxil').orderBy('createdAt','desc');
-  if(page>1 && mineMedCursor[page-1]) q = q.startAfter(mineMedCursor[page-1]);
-  const snap = await q.limit(10).get();
-  mineMedCache[page] = snap.docs.map(d=>({id:d.id, ...d.data()}));
-  mineMedCursor[page] = snap.docs[snap.docs.length-1] || mineMedCursor[page-1] || null;
-  render();
-}
-async function ensureStatsMedTotal(){
-  if(statsMedTotal!=null) return;
-  const agg = await db.collection('qaimeler').where('status','==','medaxil').count().get();
-  statsMedTotal = agg.data().count;
-  render();
-}
-async function cleanupOldMedaxil(){
-  try{
-    const cutoff = new Date(Date.now()-THREE_MONTHS_MS);
-    const snap = await db.collection('qaimeler').where('status','==','medaxil').where('createdAt','<',cutoff).get();
-    for(const d of snap.docs){
-      if(cleanupDone.has(d.id)) continue;
-      cleanupDone.add(d.id);
-      const q = {id:d.id, ...d.data()};
-      await deleteQaimePhotos(q).catch(()=>{});
-      await db.collection('qaimeler').doc(d.id).delete().catch(()=>{});
-    }
-  }catch(e){ console.error(e); }
-}
+let curPageMed = 1; // "Mədaxil Olunanlar" bölməsi üçün səhifə (mənim qaimlərim)
 
 const IDB_NAME='qaimeOffline', IDB_STORE='pending';
 function idbOpen(){ return new Promise((res,rej)=>{ const req=indexedDB.open(IDB_NAME,1); req.onupgradeneeded=()=>req.result.createObjectStore(IDB_STORE,{keyPath:'localId'}); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); }
@@ -313,17 +253,13 @@ function boot(){
   setupNav();
   loadPending();
   setupPush(db, currentUser.username);
-  cleanupOldMedaxil();
-  db.collection('qaimeler').where('status','in',['yeni','islemede','sorgu','tesdiqlenib']).orderBy('createdAt','desc').onSnapshot(snap=>{
+  db.collection('qaimeler').orderBy('createdAt','desc').onSnapshot(snap=>{
     qaimeler = snap.docs.map(d=>({id:d.id, ...d.data()}));
     render();
     renderBell();
     cleanupOld();
     if(currentUser.roles.includes('sifarisci')) checkNotifications();
     if(currentUser.roles.includes('anbar')) checkSorguNotify(db);
-  }, err=>{
-    console.error('qaimeler listener error:', err);
-    alert('Qaimələr yüklənmədi: '+err.message);
   });
 }
 if(currentUser) boot();
@@ -507,19 +443,18 @@ async function submitQaime(){
 }
 
 function viewMine(){
-  const mine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
+  const allMine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
+  const mine = allMine.filter(q=>q.status!=='medaxil');
+  const medMine = allMine.filter(q=>q.status==='medaxil');
   const pend = pendingQaimeler;
-  ensureMineMedCount();
-  fetchMineMedPage(curPageMed);
-  const total = mineMedCount ?? 0;
   const PAGE_SIZE = 10;
-  const pageCount = Math.max(1, Math.ceil(total/PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(medMine.length/PAGE_SIZE));
   if(curPageMed>pageCount) curPageMed = pageCount;
   if(curPageMed<1) curPageMed = 1;
-  const medList = mineMedCache[curPageMed] || [];
+  const medList = medMine.slice((curPageMed-1)*PAGE_SIZE, curPageMed*PAGE_SIZE);
   const pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${curPageMed===i+1?'':'sec'}" style="padding:4px 10px" onclick="curPageMed=${i+1};render()">${i+1}</button>`).join('')}</div>` : '';
   return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>${listHead()}${pend.map(r=>pendingRowHtml(r)).join('')}${mine.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}</div>
-  <div class="card"><h3>Mədaxil Olunanlar (${total})</h3>${listHead()}${medList.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}${pager}</div>`;
+  <div class="card"><h3>Mədaxil Olunanlar (${medMine.length})</h3>${listHead()}${medList.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>'}${pager}</div>`;
 }
 function pendingRowHtml(rec){
   return `<div class="row tecili">
@@ -547,27 +482,14 @@ function viewAnbarList(src){
   const tabs = [['aktiv','Mədaxil olunmayanlar'],['islemede','İşləyirəm'],['sorgu','Sorğuda'],['tesdiqlenib','Təsdiq edilib'],['medaxil','Mədaxil Olan'],['tecili','Təcili'],['problemli','Problemli']];
   const search = document.getElementById('anbarSearch')?.value || '';
   const PAGE_SIZE = 10;
-  let pageList, pageCount;
-  if(curTab==='medaxil'){
-    ensureMedCount(src);
-    fetchMedPage(src, curPage);
-    const total = medCount[src] ?? 0;
-    pageCount = Math.max(1, Math.ceil(total/PAGE_SIZE));
-    if(curPage>pageCount) curPage = pageCount;
-    if(curPage<1) curPage = 1;
-    let mList = medCache[src][curPage] || [];
-    if(search) mList = mList.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
-    pageList = mList;
-  } else {
-    let list = filterByTab(curTab, src);
-    if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
-    if(curTab==='aktiv') list = list.slice().sort((a,b)=> tsMillis(a.createdAt)-tsMillis(b.createdAt));
-    else list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
-    pageCount = Math.max(1, Math.ceil(list.length/PAGE_SIZE));
-    if(curPage>pageCount) curPage = pageCount;
-    if(curPage<1) curPage = 1;
-    pageList = list.slice((curPage-1)*PAGE_SIZE, curPage*PAGE_SIZE);
-  }
+  let list = filterByTab(curTab, src);
+  if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
+  if(curTab==='aktiv') list = list.slice().sort((a,b)=> tsMillis(a.createdAt)-tsMillis(b.createdAt));
+  else list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
+  const pageCount = Math.max(1, Math.ceil(list.length/PAGE_SIZE));
+  if(curPage>pageCount) curPage = pageCount;
+  if(curPage<1) curPage = 1;
+  const pageList = list.slice((curPage-1)*PAGE_SIZE, curPage*PAGE_SIZE);
   const pager = pageCount>1 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(pageCount)].map((_,i)=>`<button class="${curPage===i+1?'':'sec'}" style="padding:4px 10px" onclick="curPage=${i+1};render()">${i+1}</button>`).join('')}</div>` : '';
   const title = src==='istehsalat' ? 'İstehsalat Qaimləri' : 'Qaimlər';
   return `<div class="card">
@@ -1084,9 +1006,8 @@ function dismissNotifications(){
 }
 
 function viewStats(){
-  ensureStatsMedTotal();
-  const total = qaimeler.length + (statsMedTotal||0);
-  const byStatus = {yeni:0, islemede:0, medaxil:statsMedTotal||0};
+  const total = qaimeler.length;
+  const byStatus = {yeni:0, islemede:0, medaxil:0};
   qaimeler.forEach(q=>byStatus[q.status]=(byStatus[q.status]||0)+1);
   const problemli = qaimeler.filter(hasOpenProblem).length;
   const tecili = qaimeler.filter(isTecili).length;
