@@ -89,6 +89,25 @@ async function sendPushToKorUser(db, korUserId, title, body) {
   }
 }
 
+// Müəyyən rola (roles array) malik bütün istifadəçilərə bildiriş göndərir.
+async function sendPushToRole(db, role, title, body) {
+  try {
+    if (!role) return;
+    const snap = await db.collection('users').where('roles', 'array-contains', role).get();
+    const subs = [];
+    snap.forEach(doc => (doc.data().pushSubs || []).forEach(s => subs.push(s)));
+    await Promise.all(subs.map(sub =>
+      fetch(PUSH_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub, title, body })
+      }).catch(() => {})
+    ));
+  } catch (e) {
+    console.error('Push göndərmə xətası (role):', e);
+  }
+}
+
 // Adına görə istifadəçiyə bildiriş göndərir (users kolleksiyasında name sahəsi ilə axtarır).
 async function sendPushToName(db, name, title, body) {
   try {
