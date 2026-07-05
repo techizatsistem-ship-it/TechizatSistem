@@ -46,16 +46,6 @@ td,th{border:1px solid #ddd;padding:6px;text-align:left}
 </head>
 <body>
 
-<div id="loginBox">
-  <h3>Admin Giriş</h3>
-  <label>İstifadəçi adı</label>
-  <input id="loginUser" value="admin" onkeydown="if(event.key==='Enter') doLogin()">
-  <label>Şifrə</label>
-  <input id="loginPass" type="password" onkeydown="if(event.key==='Enter') doLogin()">
-  <button style="margin-top:12px;width:100%" onclick="doLogin()">Daxil ol</button>
-  <div id="loginErr" class="small" style="color:red"></div>
-</div>
-
 <div id="app" class="hidden">
 <header>
   <div class="tabs" id="navTabs"></div>
@@ -78,7 +68,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const ALL_ROLES = ['sifarisci','anbar','korporativ','istehsalat'];
 
-let currentUser = JSON.parse(sessionStorage.getItem('admincu')||'null');
+let currentUser = JSON.parse(localStorage.getItem('admincu')||'null');
 let qaimeler = [];
 let users = [];
 let failedDeletes = [];
@@ -128,7 +118,7 @@ function roleLabel(r){ return {sifarisci:'Sifarişçi',anbar:'Sistem İşçisi',
 function fmtDate(ts){ if(!ts) return ''; const d = ts.toDate?ts.toDate():new Date(ts); return d.toLocaleDateString('az-AZ')+' '+d.toLocaleTimeString('az-AZ',{hour:'2-digit',minute:'2-digit'}); }
 function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Date(ts); const t=new Date(); return d.toDateString()===t.toDateString(); }
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
-function isTecili(q){ return q.status!=='medaxil' && (q.tecili===true || (q.status==='yeni' && daysAgo(q.createdAt)>3)); }
+function isTecili(q){ return q.status!=='medaxil' && q.tecili===true; }
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
 function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':'Mədaxil edildi'); }
 function statusWithWho(q){
@@ -137,25 +127,10 @@ function statusWithWho(q){
   return 'Yeni';
 }
 
-async function doLogin(){
-  const u = document.getElementById('loginUser').value.trim();
-  const p = document.getElementById('loginPass').value.trim();
-  const snap = await db.collection('users').doc(u).get();
-  const d = snap.exists ? snap.data() : null;
-  const roles = d ? (d.roles || (d.role?[d.role]:[])) : [];
-  if(!d || d.password !== p || !roles.includes('admin')){
-    document.getElementById('loginErr').innerText = 'Yalnız admin daxil ola bilər';
-    return;
-  }
-  currentUser = {username:u, name:d.name};
-  sessionStorage.setItem('admincu', JSON.stringify(currentUser));
-  boot();
-}
-function logout(){ sessionStorage.removeItem('admincu'); location.href = 'index.html'; }
+function logout(){ localStorage.removeItem('admincu'); location.href = 'index.html'; }
 
 function boot(){
   if(!currentUser) return;
-  document.getElementById('loginBox').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
   document.getElementById('userInfo').style.cursor='pointer';
@@ -177,7 +152,7 @@ function boot(){
   });
   render();
 }
-if(currentUser) boot();
+if(currentUser) boot(); else location.href = 'index.html';
 
 function setNav(n){ curNav=n; render(); }
 
