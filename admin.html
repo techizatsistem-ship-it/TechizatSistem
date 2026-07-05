@@ -78,7 +78,7 @@ let curNav = 'users';
 const PAGE_SIZE = 10;
 let pg = {};
 async function pgLoad(key, whereFn, page){
-  if(!pg[key]) pg[key] = {cursors:[null], mode:null, page:1};
+  if(!pg[key]) pg[key] = {cursors:[null], mode:null, page:1, pageDocCount:{}};
   const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1;
   try{
     if(st.mode==='fallback') throw 0;
@@ -88,9 +88,11 @@ async function pgLoad(key, whereFn, page){
       if(st.cursors[p-1]) q = whereFn().orderBy('createdAt','desc').startAfter(st.cursors[p-1]).limit(PAGE_SIZE);
       const snap = await q.get();
       st.cursors[p] = snap.docs.length ? snap.docs[snap.docs.length-1] : (st.cursors[p-1]||null);
+      st.pageDocCount[p] = snap.docs.length;
       if(p===page) st.rows = snap.docs.map(d=>({id:d.id,...d.data()}));
     }
-    if(st.total==null){ try{ const c = await whereFn().count().get(); st.total = c.data().count; }catch(e){ st.total=st.rows?st.rows.length:0; } }
+    st.hasMore = (st.pageDocCount[page]||0) === PAGE_SIZE;
+    st.maxKnownPage = Math.max(st.maxKnownPage||1, page);
     st.mode = 'index';
   }catch(e){
     if(e) console.warn('Pagination indeksi yoxdur, ehtiyat rejiminə keçildi:', e);
@@ -111,10 +113,19 @@ async function pgLoad(key, whereFn, page){
 function pgGoto(key, page){ pgLoad(key, pg[key].wf, page); }
 function pgButtons(key){
   const st = pg[key];
-  if(!st || !st.total || st.total<=PAGE_SIZE) return '';
-  const pages = Math.ceil(st.total/PAGE_SIZE);
+  if(!st) return '';
+  if(st.mode==='fallback'){
+    if(!st.total || st.total<=PAGE_SIZE) return '';
+    const pages = Math.ceil(st.total/PAGE_SIZE);
+    let h = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">';
+    for(let i=1;i<=pages;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+    return h+'</div>';
+  }
+  const maxP = st.maxKnownPage||1;
+  if(maxP<=1 && !st.hasMore) return '';
   let h = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">';
-  for(let i=1;i<=pages;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+  for(let i=1;i<=maxP;i++) h+=`<button class="${st.page===i?'':'sec'}" style="padding:4px 10px" onclick="pgGoto('${key}',${i})">${i}</button>`;
+  if(st.hasMore) h+=`<button class="sec" style="padding:4px 10px" onclick="pgGoto('${key}',${maxP+1})">Sonrakı ▶</button>`;
   return h+'</div>';
 }
 
@@ -143,14 +154,16 @@ function boot(){
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   db.collection('users').onSnapshot(snap=>{ users = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
   db.collection('failedDeletes').orderBy('at','desc').onSnapshot(snap=>{ failedDeletes = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
-['yeni','islemede'].forEach(st=>{
-  db.collection('qaimeler').where('status','==',st).onSnapshot(()=>{
-    const key = 'admin_'+st;
-    delete pg[key]; delete pg[key+'_search'];
-    if(curNav==='qaimeler' && qStatusFilter===st) render();
+  // Yalnız 'yeni' və 'islemede' statusları üçün canlı dinləmə saxlanılır.
+  // 'medaxil' və 'checked' üçün heç bir onSnapshot yoxdur — onlar yalnız
+  // istifadəçi həmin tabı klikləyəndə, səhifə-səhifə (10-luq) yüklənir.
+  ['yeni','islemede'].forEach(st=>{
+    db.collection('qaimeler').where('status','==',st).onSnapshot(()=>{
+      const key = 'admin_'+st;
+      delete pg[key]; delete pg[key+'_search'];
+      if(curNav==='qaimeler' && qStatusFilter===st) render();
+    });
   });
-});
-
   render();
 }
 if(currentUser) boot(); else location.href = 'index.html';
@@ -319,9 +332,10 @@ function viewQaimeler(){
     ${hasOpenProblem(q)?'<span class="badge">Problem</span>':''}
   </div>`;
   }).join('');
-  const totalCount = (pg[key] && pg[key].total != null) ? pg[key].total : list.length;
+  const st_ = pg[key];
+  const countLabel = st_ && st_.mode==='fallback' ? ` / cəmi: ${st_.total}` : (st_ && st_.hasMore ? '+' : '');
   return `<div class="card">
-    <h3>Qaimlər (${list.length} / cəmi: ${totalCount})</h3>
+    <h3>Qaimlər (${list.length}${countLabel})</h3>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <button class="${qStatusFilter==='yeni'?'':'sec'}" onclick="setQStatus('yeni')">Yeni</button>
       <button class="${qStatusFilter==='islemede'?'':'sec'}" onclick="setQStatus('islemede')">İşlənilir</button>
@@ -504,4 +518,3 @@ async function deleteFailedLog(id){
 </script>
 </body>
 </html>
-
