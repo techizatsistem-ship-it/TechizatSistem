@@ -319,8 +319,9 @@ function viewQaimeler(){
     ${hasOpenProblem(q)?'<span class="badge">Problem</span>':''}
   </div>`;
   }).join('');
+  const totalCount = (pg[key] && pg[key].total != null) ? pg[key].total : list.length;
   return `<div class="card">
-    <h3>Qaimlər (${list.length})</h3>
+    <h3>Qaimlər (${list.length} / cəmi: ${totalCount})</h3>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <button class="${qStatusFilter==='yeni'?'':'sec'}" onclick="setQStatus('yeni')">Yeni</button>
       <button class="${qStatusFilter==='islemede'?'':'sec'}" onclick="setQStatus('islemede')">İşlənilir</button>
