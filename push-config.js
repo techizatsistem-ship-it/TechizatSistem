@@ -90,6 +90,8 @@ async function sendPushToKorUser(db, korUserId, title, body) {
 }
 
 // Müəyyən rolu olan bütün istifadəçilərə bildiriş göndərir (məs: bütün 'istehsalat' rollu istifadəçilərə).
+// Qeyd: bu, YALNIZ 'users' kolleksiyasındakı sistem istifadəçilərinə baxır (rolu 'istehsalat' olanlar) —
+// 'korusers' (Kim üçün? sahəsindəki korporativ müştərilər) burada iştirak etmir, onlar tamam ayrı bir şeydir.
 async function sendPushToRole(db, role, title, body) {
   try {
     if (!role) return;
@@ -104,6 +106,10 @@ async function sendPushToRole(db, role, title, body) {
       seen.add(doc.id);
       (doc.data().pushSubs || []).forEach(s => subs.push(s));
     });
+    if (subs.length === 0) {
+      console.warn(`sendPushToRole: '${role}' rollu istifadəçilərdən heç birinin aktiv push abunəliyi yoxdur (cihazda bildirişə icazə verilməyib və ya heç açılmayıb).`);
+      return;
+    }
     await Promise.all(subs.map(sub =>
       fetch(PUSH_WORKER_URL, {
         method: 'POST',
@@ -117,23 +123,34 @@ async function sendPushToRole(db, role, title, body) {
 }
 
 // Sorğu statusundakı qaimə sayı 5-in mislinə (5, 10, 15...) çatanda bütün 'istehsalat'
-// rollu istifadəçilərə bildiriş göndərir. Son bildiriş edilən həddi Firestore-da saxlayır ki,
+// rollu istifadəçilərə bildiriş göndərir. Son bildiriş edilən həddi Firestore-da (meta/counter
+// sənədi — artıq mövcud və yazıla bilən bir sənəd, uydurma yeni sənəd YOXdur) saxlayır ki,
 // (a) eyni həddə görə iki dəfə bildiriş getməsin, (b) say bir dəfəyə bir neçə pillə artsa
 // (məs. 4-dən 7-yə) belə, keçilən hər həddə görə bildiriş qaçırılmasın.
 async function checkSorguNotify(db){
   try{
-    const c = await db.collection('qaimeler').where('status','==','sorgu').count().get();
-    const n = c.data().count;
+    let n;
+    try{
+      const c = await db.collection('qaimeler').where('status','==','sorgu').count().get();
+      n = c.data().count;
+    }catch(countErr){
+      console.warn('checkSorguNotify: count() işləmədi, tam sorğu ilə hesablanır:', countErr);
+      const snap = await db.collection('qaimeler').where('status','==','sorgu').get();
+      n = snap.size;
+    }
     const threshold = Math.floor(n/5)*5;
-    const ref = db.collection('meta').doc('sorguNotify');
+    const ref = db.collection('meta').doc('counter');
     const shouldSend = await db.runTransaction(async t=>{
       const snap = await t.get(ref);
-      const last = snap.exists ? (snap.data().lastNotified||0) : 0;
+      const last = snap.exists ? (snap.data().sorguNotified||0) : 0;
       if(threshold === last) return false;
-      t.set(ref, {lastNotified: threshold}, {merge:true});
+      t.set(ref, {sorguNotified: threshold}, {merge:true});
       return threshold > last && threshold >= 5;
     });
-    if(shouldSend) await sendPushToRole(db, 'istehsalat', 'Sorğu bildirişi', `${n} ədəd sorğu var`);
+    if(shouldSend){
+      console.log(`checkSorguNotify: sorğu sayı ${n}, ${threshold} həddi keçildi, istehsalat rolunə bildiriş göndərilir.`);
+      await sendPushToRole(db, 'istehsalat', 'Sorğu bildirişi', `${n} ədəd sorğu var`);
+    }
   }catch(e){ console.error('Sorğu bildiriş sayı xətası:', e); }
 }
 
@@ -155,7 +172,6 @@ async function sendPushToName(db, name, title, body) {
     console.error('Push göndərmə xətası:', e);
   }
 }
-
 
 
 
