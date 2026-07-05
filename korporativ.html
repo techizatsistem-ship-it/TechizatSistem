@@ -172,8 +172,8 @@ function boot(){
   document.getElementById('navTabs').innerHTML = [['yeni','Yeni'],['medaxil','Mədaxil Olunub'],['islemede','İşlənilir'],['sorgu','Sorğudadır'],['tesdiqlenib','Təsdiq edilib'],['istehsalat','İstehsalat']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   setupPush(db, currentUser.username, currentUser.isKorUser?'korusers':undefined);
-  ['yeni','medaxil','islemede','sorgu','tesdiqlenib'].forEach(st=>{
-    const key = st==='yeni' ? 'kp_yeni' : (st==='medaxil' ? 'kp_medaxil' : 'kp_'+st);
+  ['yeni','islemede','sorgu','tesdiqlenib'].forEach(st=>{
+    const key = st==='yeni' ? 'kp_yeni' : 'kp_'+st;
     scopedWf(()=> db.collection('qaimeler').where('status','==',st))().onSnapshot(()=>{
       delete pg[key]; delete pg[key+'_search'];
       if(curNav===st) render();
