@@ -210,6 +210,17 @@ function boot(){
   document.getElementById('navTabs').innerHTML = [['yeni','Yeni'],['medaxil','Mədaxil Olunub'],['islemede','İşlənilir'],['sorgu','Sorğudadır'],['tesdiqlenib','Təsdiq edilib'],['istehsalat','İstehsalat']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   setupPush(db, currentUser.username, currentUser.isKorUser?'korusers':undefined);
+  ['yeni','medaxil','islemede','sorgu','tesdiqlenib'].forEach(st=>{
+    const key = st==='yeni' ? 'kp_yeni' : (st==='medaxil' ? 'kp_medaxil' : 'kp_'+st);
+    scopedWf(()=> db.collection('qaimeler').where('status','==',st))().onSnapshot(()=>{
+      delete pg[key]; delete pg[key+'_search'];
+      if(curNav===st) render();
+    });
+  });
+  scopedWf(()=> db.collection('qaimeler').where('qType','==','istehsalat'))().onSnapshot(()=>{
+    delete pg['kp_istehsalat']; delete pg['kp_istehsalat_search'];
+    if(curNav==='istehsalat') render();
+  });
   render();
 }
 if(currentUser) boot();
@@ -298,9 +309,9 @@ function rowHtml(q){
       <div>Kim işlədi: ${q.isleyen||'—'}</div>
       <div>Mədaxil №: ${q.medaxilNo||'—'}</div>
       ${(q.korpMessages && q.korpMessages.length) ? '<div class="small">Problem bildirilib</div>' : `<button class="danger" style="margin-top:6px" onclick="openProblemModal('${q.id}')">Problem bildir</button>`}
-      <label style="display:flex;align-items:center;gap:6px;width:auto;margin-top:8px">
+      ${isIlyas() ? `<label style="display:flex;align-items:center;gap:6px;width:auto;margin-top:8px">
         <input type="checkbox" style="width:auto" ${checked?'checked':''} onchange="toggleChecked('${q.id}',this.checked)"> Yoxlanıldı (bu qaimə şirkət sistemində yoxlanılıb)
-      </label>
+      </label>` : ''}
     </div>
   </div>`;
 }
