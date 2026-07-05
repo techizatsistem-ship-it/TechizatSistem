@@ -257,6 +257,7 @@ function boot(){
     renderBell();
     cleanupOld();
     if(currentUser.roles.includes('sifarisci')) checkNotifications();
+    if(currentUser.roles.includes('anbar')) checkSorguNotify(db);
   });
 }
 if(currentUser) boot();
@@ -289,13 +290,6 @@ function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Da
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function tsMillis(ts){ if(!ts) return 0; return ts.toDate?ts.toDate().getTime():new Date(ts).getTime(); }
 function isTecili(q){ return q.status!=='medaxil' && q.tecili===true; }
-async function checkSorguNotify(){
-  try{
-    const c = await db.collection('qaimeler').where('status','==','sorgu').count().get();
-    const n = c.data().count;
-    if(n>0 && n%5===0) sendPushToRole(db, 'istehsalat', 'Sorğu bildirişi', `${n} ədəd sorğu var`);
-  }catch(e){ console.error('Sorğu bildiriş sayı xətası:', e); }
-}
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
 function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğuda':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
 function dlUrl(u){ return u.replace('/upload/','/upload/fl_attachment/'); }
@@ -879,7 +873,7 @@ async function saveMedaxil(id, isSorgu){
   await db.collection('qaimeler').doc(id).update(upd);
   const q = qaimeler.find(x=>x.id===id);
   if(!isSorgu && q && q.kimUcunId) sendPushToKorUser(db, q.kimUcunId, 'Mədaxil olundu', `Qaimə_${q.no} mədaxil olundu.`);
-  if(isSorgu) checkSorguNotify();
+  if(isSorgu) checkSorguNotify(db);
   closeModal();
 }
 
