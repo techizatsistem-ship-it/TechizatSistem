@@ -89,13 +89,21 @@ async function sendPushToKorUser(db, korUserId, title, body) {
   }
 }
 
-// Müəyyən rola (roles array) malik bütün istifadəçilərə bildiriş göndərir.
+// Müəyyən rolu olan bütün istifadəçilərə bildiriş göndərir (məs: bütün 'istehsalat' rollu istifadəçilərə).
 async function sendPushToRole(db, role, title, body) {
   try {
     if (!role) return;
-    const snap = await db.collection('users').where('roles', 'array-contains', role).get();
+    const [snapArr, snapLegacy] = await Promise.all([
+      db.collection('users').where('roles', 'array-contains', role).get(),
+      db.collection('users').where('role', '==', role).get()
+    ]);
+    const seen = new Set();
     const subs = [];
-    snap.forEach(doc => (doc.data().pushSubs || []).forEach(s => subs.push(s)));
+    [...snapArr.docs, ...snapLegacy.docs].forEach(doc => {
+      if (seen.has(doc.id)) return;
+      seen.add(doc.id);
+      (doc.data().pushSubs || []).forEach(s => subs.push(s));
+    });
     await Promise.all(subs.map(sub =>
       fetch(PUSH_WORKER_URL, {
         method: 'POST',
@@ -104,7 +112,7 @@ async function sendPushToRole(db, role, title, body) {
       }).catch(() => {})
     ));
   } catch (e) {
-    console.error('Push göndərmə xətası (role):', e);
+    console.error('Push göndərmə xətası (rol):', e);
   }
 }
 
