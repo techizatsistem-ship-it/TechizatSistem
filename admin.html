@@ -294,9 +294,9 @@ async function markChecked(id){
 let qStatusFilter = 'yeni';
 function setQStatus(s){ qStatusFilter = s; render(); }
 function qStatusWhereFn(){
-  return qStatusFilter==='checked'
-    ? ()=> db.collection('qaimeler').where('checked','==',true)
-    : ()=> db.collection('qaimeler').where('status','==',qStatusFilter);
+  if(qStatusFilter==='checked') return ()=> db.collection('qaimeler').where('checked','==',true);
+  if(qStatusFilter==='hamisi') return ()=> db.collection('qaimeler');
+  return ()=> db.collection('qaimeler').where('status','==',qStatusFilter);
 }
 function viewQaimeler(){
   const search = document.getElementById('adminSearch')?.value || '';
@@ -308,11 +308,11 @@ function viewQaimeler(){
       if(!pg[skey]){ pg[skey] = {mode:'search', loading:true}; qStatusWhereFn()().get().then(snap=>{ pg[skey].all = snap.docs.map(d=>({id:d.id,...d.data()})); pg[skey].loading=false; render(); }); }
     }
     list = (pg[skey] && pg[skey].all || []).filter(q=> String(q.no).includes(search) || (q.sifarisVeren||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
-    list = list.filter(q=> qStatusFilter!=='checked' ? !q.checked : true);
+    list = list.filter(q=> (qStatusFilter!=='checked' && qStatusFilter!=='hamisi') ? !q.checked : true);
   } else {
     if(!pg[key]){ pgLoad(key, qStatusWhereFn()); }
     list = (pg[key] && pg[key].rows) || [];
-    if(qStatusFilter!=='checked') list = list.filter(q=>!q.checked);
+    if(qStatusFilter!=='checked' && qStatusFilter!=='hamisi') list = list.filter(q=>!q.checked);
     pager = pgButtons(key);
   }
   qaimeler = list;
@@ -336,11 +336,12 @@ function viewQaimeler(){
   const countLabel = st_ && st_.mode==='fallback' ? ` / cəmi: ${st_.total}` : (st_ && st_.hasMore ? '+' : '');
   return `<div class="card">
     <h3>Qaimlər (${list.length}${countLabel})</h3>
-    <div style="display:flex;gap:6px;margin-bottom:8px">
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
       <button class="${qStatusFilter==='yeni'?'':'sec'}" onclick="setQStatus('yeni')">Yeni</button>
       <button class="${qStatusFilter==='islemede'?'':'sec'}" onclick="setQStatus('islemede')">İşlənilir</button>
       <button class="${qStatusFilter==='medaxil'?'':'sec'}" onclick="setQStatus('medaxil')">Mədaxil olunub</button>
       <button class="${qStatusFilter==='checked'?'':'sec'}" onclick="setQStatus('checked')">Yoxlanıldı</button>
+      <button class="${qStatusFilter==='hamisi'?'':'sec'}" onclick="setQStatus('hamisi')">Hamısı</button>
     </div>
     <input id="adminSearch" placeholder="Axtar (№ / sifarişçi / kim üçün)" value="${search}" oninput="render()">
     <div style="margin-top:10px">${rows || '<div class="small">Yoxdur</div>'}</div>
