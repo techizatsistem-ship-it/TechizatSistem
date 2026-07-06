@@ -411,23 +411,72 @@ function viewAddForm(){
       <button type="button" class="sec" onclick="document.getElementById('f_gal').click()">🖼 Fayldan seç</button>
     </div>
     <div class="imgpick" id="picPreview"></div>
+    <div id="picReviewBtnWrap"></div>
     <div id="addErr" class="small" style="color:red"></div>
     <button id="submitBtn" style="margin-top:12px" onclick="submitQaime()">Əlavə Et</button>
   </div>`;
 }
 function onPick(e){
+  const startIdx = pickedFiles.length;
   [...e.target.files].forEach(f=>{
     const url = URL.createObjectURL(f);
     pickedFiles.push({file:f, url});
   });
   e.target.value='';
   renderPreview();
+  if(pickedFiles.length>0) openPickReview(startIdx<pickedFiles.length?startIdx:0);
 }
 function renderPreview(){
   const urls = pickedFiles.map(p=>p.url);
   document.getElementById('picPreview').innerHTML = pickedFiles.map((p,i)=>
     `<div style="position:relative"><img src="${p.url}" onclick="openViewer(${JSON.stringify(urls).replace(/"/g,'&quot;')},${i})"><button onclick="event.stopPropagation();pickedFiles.splice(${i},1);renderPreview()" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;padding:0;border-radius:50%;background:#c0392b">×</button></div>`
   ).join('');
+  const btnWrap = document.getElementById('picReviewBtnWrap');
+  if(btnWrap) btnWrap.innerHTML = pickedFiles.length ? `<button type="button" class="sec" style="margin-top:6px" onclick="openPickReview(0)">🔍 Tam ekranda bax / seç</button>` : '';
+}
+// Şəkilləri tam ekranda, bir-bir, sürüşdürərək (və ya ◀▶ ilə) nəzərdən keçirmək və
+// lazım olmayanları birbaşa bu ekrandan silmək üçün.
+function openPickReview(idx){
+  if(!pickedFiles.length) return;
+  if(idx>=pickedFiles.length) idx = pickedFiles.length-1;
+  if(idx<0) idx = 0;
+  pushModalHistory();
+  const root = document.getElementById('modalRoot');
+  let startX = null;
+  function render(){
+    if(!pickedFiles.length){ finish(); return; }
+    if(idx>=pickedFiles.length) idx = pickedFiles.length-1;
+    if(idx<0) idx = 0;
+    root.innerHTML = `<div id="viewerModal">
+      <div class="bar">
+        <button class="sec" onclick="finishPickReview()">Bitdi</button>
+        <button id="rPrev">◀</button>
+        <span style="color:#fff;align-self:center">${idx+1}/${pickedFiles.length}</span>
+        <button id="rNext">▶</button>
+        <button class="danger" id="rDel">🗑 Sil</button>
+      </div>
+      <div id="rWrap" style="flex:1;overflow:hidden;display:flex;touch-action:pan-y;position:relative">
+        <img id="rImg" src="${pickedFiles[idx].url}" style="max-width:100%;max-height:80vh;transform:translate(-50%,-50%)">
+      </div>
+    </div>`;
+    document.getElementById('rPrev').onclick = ()=>{ idx=(idx-1+pickedFiles.length)%pickedFiles.length; render(); };
+    document.getElementById('rNext').onclick = ()=>{ idx=(idx+1)%pickedFiles.length; render(); };
+    document.getElementById('rDel').onclick = ()=>{ pickedFiles.splice(idx,1); renderPreview(); render(); };
+    const wrap = document.getElementById('rWrap');
+    wrap.addEventListener('touchstart', e=>{ startX = e.touches[0].clientX; }, {passive:true});
+    wrap.addEventListener('touchend', e=>{
+      if(startX===null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      if(Math.abs(dx) > 40){
+        if(dx<0) idx=(idx+1)%pickedFiles.length; else idx=(idx-1+pickedFiles.length)%pickedFiles.length;
+        render();
+      }
+      startX = null;
+    }, {passive:true});
+  }
+  function finish(){ closeModal(); renderPreview(); }
+  window.finishPickReview = finish;
+  render();
 }
 function compressImage(file, maxSize=1200, quality=0.7, wmLines=null){
   return new Promise(resolve=>{
