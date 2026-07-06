@@ -103,10 +103,18 @@ function kimFilter(prefix){
   prefix = prefix || 'f';
   document.getElementById(prefix+'_kim_id').value='';
   const q = document.getElementById(prefix+'_kim').value.trim().toLowerCase();
+  const inp = document.getElementById(prefix+'_kim');
   const box = document.getElementById(prefix+'_kimBox');
   const list = korUsers.filter(u=>u.name.toLowerCase().includes(q));
   box.innerHTML = list.map(u=>`<div style="padding:8px;cursor:pointer;border-bottom:1px solid #eee" onclick="kimPick('${prefix}','${u.id}',${JSON.stringify(u.name).replace(/"/g,'&quot;')})">${u.name}</div>`).join('') || '<div style="padding:8px;color:#999">Tapılmadı — yazdığınız qəbul olunacaq</div>';
   box.style.display = 'block';
+  requestAnimationFrame(()=>{
+    const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    const rect = inp.getBoundingClientRect();
+    const space = vh - rect.bottom - 10;
+    box.style.maxHeight = Math.max(100, space) + 'px';
+    if(space < 100) inp.scrollIntoView({block:'center', behavior:'smooth'});
+  });
 }
 function kimPick(prefix, id, name){
   const inp = document.getElementById(prefix+'_kim');
@@ -518,10 +526,10 @@ function pendingRowHtml(rec){
 function viewAnbarList(src){
   src = src || 'sifaris';
   const scoped = qaimeler.filter(q=> src==='istehsalat' ? q.qType==='istehsalat' : q.qType!=='istehsalat');
-  const problemCount = scoped.filter(q=>hasOpenProblem(q)).length;
   const tesdiqCount = scoped.filter(q=>q.status==='tesdiqlenib' && q.isleyen===currentUser.name).length;
-  const tabs = [['aktiv','Mədaxil olunmayanlar'],['islemede','İşləyirəm'],['sorgu','Sorğuda'],['tesdiqlenib','Təsdiq edilib'],['medaxil','Mədaxil Olan'],['tecili','Təcili'],['problemli','Problemli']];
+  const tabs = [['aktiv','Mədaxil olunmayanlar'],['islemede','İşləyirəm'],['sorgu','Sorğuda'],['tesdiqlenib','Təsdiq edilib'],['medaxil','Mədaxil Olan'],['tecili','Təcili']];
   const search = document.getElementById('anbarSearch')?.value || '';
+  const sorguCodesVal = document.getElementById('sorguCodes')?.value || '';
   const PAGE_SIZE = 10;
   const isPagedMed = (curTab==='medaxil' && src==='sifaris');
   let pageList, pager;
@@ -543,9 +551,17 @@ function viewAnbarList(src){
   return `<div class="card">
     <h3>${title}</h3>
     <input id="anbarSearch" placeholder="Axtar (qaimə № / anbar)" value="${search}" oninput="curPage=1;render()">
-    <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="${t[0]==='medaxil'&&src==='sifaris'?'openMedaxilTab()':`curTab='${t[0]}';curPage=1;render()`}">${t[1]}${t[0]==='problemli'&&problemCount?` <span class="badge">${problemCount}</span>`:''}${t[0]==='tesdiqlenib'&&tesdiqCount?` <span class="badge">${tesdiqCount}</span>`:''}</button>`).join('')}</div>
+    <div class="tabbar" style="margin-top:10px">${tabs.map(t=>`<button class="${curTab===t[0]?'active':''}" onclick="${t[0]==='medaxil'&&src==='sifaris'?'openMedaxilTab()':`curTab='${t[0]}';curPage=1;render()`}">${t[1]}${t[0]==='tesdiqlenib'&&tesdiqCount?` <span class="badge">${tesdiqCount}</span>`:''}</button>`).join('')}</div>
     ${curTab==='aktiv'?`<button onclick="bulkTake()">İşlə (seçilənlər: ${selected.size})</button>`:''}
     ${curTab==='tesdiqlenib'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button class="sec" onclick="copyCodes('${src}')">Kodları kopyala</button><button onclick="bulkMedaxilFinal('${src}')">Mədaxil edildi (seçilənlər: ${selected.size})</button></div>`:''}
+    ${curTab==='sorgu'?`<div style="margin-bottom:6px">
+      <label>Təsdiq edilmiş sorğu nömrələri (hər sətirdə bir kod)</label>
+      <textarea id="sorguCodes" rows="4" placeholder="PRQ260000378&#10;PCO260006024&#10;PIN260007994">${sorguCodesVal}</textarea>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <button class="sec" onclick="selectSorguCodes('${src}')">Seç</button>
+        <button onclick="bulkTesdiqFinal('${src}')">Təsdiq edilibə göndər (seçilənlər: ${selected.size})</button>
+      </div>
+    </div>`:''}
     <div style="margin-top:10px">${listHead()}${isPagedMed && medPage.loading?'<div class="small">Yüklənir...</div>':(pageList.map(q=>rowHtml(q,true)).join('') || '<div class="small">Yoxdur</div>')}</div>
     ${pager}
   </div>`;
@@ -575,7 +591,7 @@ function listHead(){
 function rowHtml(q, anbarMode){
   const tecili = isTecili(q);
   const problem = hasOpenProblem(q);
-  const checkbox = (anbarMode && (curTab==='aktiv'||curTab==='tesdiqlenib')) ? `<input type="checkbox" style="width:auto" ${selected.has(q.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${q.id}')">` : '';
+  const checkbox = (anbarMode && (curTab==='aktiv'||curTab==='tesdiqlenib'||curTab==='sorgu')) ? `<input type="checkbox" style="width:auto" ${selected.has(q.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${q.id}')">` : '';
   const photos = q.photos||[];
   const thumb = photos[0] ? `<img class="thumb" src="${photos[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(photos).replace(/"/g,'&quot;')},0)">` : '';
   return `<div class="row ${tecili?'tecili':''}">
@@ -762,6 +778,29 @@ async function bulkMedaxilFinal(src){
     const body = nos.length===1 ? `Qaimə_${nos[0]} mədaxil olundu.` : `Qaimə_${nos.join(', ')} mədaxil olundu (${nos.length} ədəd).`;
     sendPushToKorUser(db, kid, 'Mədaxil olundu', body);
   });
+  selected.clear();
+  render();
+}
+function selectSorguCodes(src){
+  const raw = document.getElementById('sorguCodes')?.value || '';
+  const codes = raw.split('\n').map(c=>c.trim()).filter(Boolean);
+  if(codes.length===0) return;
+  const codeSet = new Set(codes.map(c=>c.toLowerCase()));
+  const list = filterByTab('sorgu', src);
+  const matched = list.filter(q=> q.medaxilNo && codeSet.has(String(q.medaxilNo).trim().toLowerCase()));
+  selected = new Set(matched.map(q=>q.id));
+  const foundCodes = new Set(matched.map(q=>String(q.medaxilNo).trim().toLowerCase()));
+  const notFound = codes.filter(c=>!foundCodes.has(c.toLowerCase()));
+  if(notFound.length) alert('Tapılmadı: '+notFound.join(', '));
+  render();
+}
+async function bulkTesdiqFinal(src){
+  if(selected.size===0) return;
+  const batch = db.batch();
+  selected.forEach(id=>{
+    batch.update(db.collection('qaimeler').doc(id), {status:'tesdiqlenib', tesdiqEden:currentUser.name});
+  });
+  await batch.commit();
   selected.clear();
   render();
 }
@@ -983,7 +1022,6 @@ async function saveResolve(id){
 }
 
 function anbarMessages(){
-  if(!currentUser.roles || !currentUser.roles.includes('anbar')) return [];
   const out = [];
   qaimeler.forEach(q=>{
     if(q.isleyen===currentUser.name && q.korpMessages && q.korpMessages.length){
@@ -997,7 +1035,7 @@ function renderBell(){
   const el = document.getElementById('bellWrap');
   if(!el) return;
   const msgs = anbarMessages();
-  if(!currentUser.roles.includes('anbar') || msgs.length===0){ el.innerHTML=''; return; }
+  if(msgs.length===0){ el.innerHTML=''; return; }
   el.innerHTML = `<button onclick="openBell()">🔔 Bildirişlər <span class="badge">${msgs.length}</span></button>`;
 }
 function openBell(){
