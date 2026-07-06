@@ -25,6 +25,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 .card{background:#fff;padding:14px;border-radius:8px;margin-bottom:12px}
 .row{border:1px solid #ddd;border-radius:6px;margin-bottom:6px;padding:8px;background:#fff;cursor:pointer}
 .row.tecili{border:2px solid #c0392b}
+.row.checked{border:2px solid #16a34a}
 .line-grid{display:grid;grid-template-columns:50px 110px 1fr 1fr 1fr 90px 90px;gap:8px;align-items:center;font-size:14px}
 .line-grid b{color:#2563eb}
 .small{font-size:12px;color:#666}
@@ -78,18 +79,22 @@ let curNav = 'users';
 const PAGE_SIZE = 10;
 let pg = {};
 async function pgLoad(key, whereFn, page){
-  if(!pg[key]) pg[key] = {cursors:[null], mode:null, page:1, pageDocCount:{}};
+  if(!pg[key]) pg[key] = {cursors:[null], mode:null, page:1, pageDocCount:{}, pageRows:{}};
   const st = pg[key]; st.wf = whereFn; st.page = page = page||st.page||1;
   try{
     if(st.mode==='fallback') throw 0;
     for(let p=1;p<=page;p++){
-      if(st.cursors[p]!==undefined) continue;
+      if(st.cursors[p]!==undefined){
+        if(p===page && st.pageRows[p]) st.rows = st.pageRows[p];
+        continue;
+      }
       let q = whereFn().orderBy('createdAt','desc').limit(PAGE_SIZE);
       if(st.cursors[p-1]) q = whereFn().orderBy('createdAt','desc').startAfter(st.cursors[p-1]).limit(PAGE_SIZE);
       const snap = await q.get();
       st.cursors[p] = snap.docs.length ? snap.docs[snap.docs.length-1] : (st.cursors[p-1]||null);
       st.pageDocCount[p] = snap.docs.length;
-      if(p===page) st.rows = snap.docs.map(d=>({id:d.id,...d.data()}));
+      st.pageRows[p] = snap.docs.map(d=>({id:d.id,...d.data()}));
+      if(p===page) st.rows = st.pageRows[p];
     }
     st.hasMore = (st.pageDocCount[page]||0) === PAGE_SIZE;
     st.maxKnownPage = Math.max(st.maxKnownPage||1, page);
@@ -281,12 +286,18 @@ function openQaimeDetail(id){
     </table>
     <div style="display:flex;gap:6px;margin-top:10px">
       <button class="sec" onclick="closeModal()">Bağla</button>
-      <button onclick="markChecked('${q.id}')">Yoxlanıldı</button>
+      ${q.checked ? `<button class="sec" onclick="uncheckQ('${q.id}')">Geri qaytar</button>` : `<button onclick="markChecked('${q.id}')">Yoxlanıldı</button>`}
     </div>
   </div></div>`;
 }
 async function markChecked(id){
   await db.collection('qaimeler').doc(id).update({checked:true});
+  pg = {};
+  closeModal();
+  render();
+}
+async function uncheckQ(id){
+  await db.collection('qaimeler').doc(id).update({checked:false});
   pg = {};
   closeModal();
   render();
@@ -320,7 +331,7 @@ function viewQaimeler(){
   const rows = list.map(q=>{
     const photos = q.photos||[];
     const thumb = photos[0] ? `<img class="thumb" src="${photos[0]}" onclick="event.stopPropagation();openViewer(${JSON.stringify(photos).replace(/"/g,'&quot;')},0)">` : '<span class="small">—</span>';
-    return `<div class="row ${isTecili(q)?'tecili':''}" onclick="openQaimeDetail('${q.id}')">
+    return `<div class="row ${q.checked?'checked':(isTecili(q)?'tecili':'')}" onclick="openQaimeDetail('${q.id}')">
     <div class="line-grid">
       <span>${thumb}</span>
       <span><b>Qaimə_${q.no}</b>${q.qType==='istehsalat'?' <span class="chip">İstehsalat</span>':''}<br><span class="small">${fmtDate(q.createdAt)}</span></span>
