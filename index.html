@@ -37,7 +37,7 @@ main{padding:12px;max-width:900px;margin:0 auto}
 .line-extras{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
 .col-check{width:24px}
 .row .details{margin-top:8px;font-size:13px;color:#444;border-top:1px solid #eee;padding-top:8px}
-.thumb{width:50px;height:50px;object-fit:cover;border-radius:4px;cursor:pointer}
+.thumb{width:92px;height:92px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #ddd}
 .tabbar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .tabbar button{background:#e2e8f0;color:#222;padding:6px 10px}
 .tabbar button.active{background:#2563eb;color:#fff}
@@ -556,7 +556,7 @@ function viewAnbarList(src){
     ${curTab==='tesdiqlenib'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button class="sec" onclick="copyCodes('${src}')">Kodları kopyala</button><button onclick="bulkMedaxilFinal('${src}')">Mədaxil edildi (seçilənlər: ${selected.size})</button></div>`:''}
     ${curTab==='sorgu'?`<div style="margin-bottom:6px">
       <label>Təsdiq edilmiş sorğu nömrələri (hər sətirdə bir kod)</label>
-      <textarea id="sorguCodes" rows="4" placeholder="PRQ260000378&#10;PCO260006024&#10;PIN260007994">${sorguCodesVal}</textarea>
+      <textarea id="sorguCodes" rows="1" placeholder="PRQ260000378&#10;PCO260006024&#10;PIN260007994">${sorguCodesVal}</textarea>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
         <button class="sec" onclick="selectSorguCodes('${src}')">Seç</button>
         <button onclick="bulkTesdiqFinal('${src}')">Təsdiq edilibə göndər (seçilənlər: ${selected.size})</button>
