@@ -771,12 +771,13 @@ async function deleteQaimePhotos(q){
 }
 async function deleteQaime(id){
   const q = qaimeler.find(x=>x.id===id);
-  if(q && q.status==='medaxil'){ alert('Mədaxil olunmuş qaimə silinə bilməz.'); return; }
-  if(!confirm('Qaimə silinsin?')) return;
+  if(q && q.status==='medaxil'){ alert('Mədaxil olunmuş qaimə silinə bilməz.'); return false; }
+  if(!confirm('Qaimə silinsin?')) return false;
   let failed = [];
   if(q) failed = await deleteQaimePhotos(q);
   await db.collection('qaimeler').doc(id).delete();
   if(failed.length) alert(`Diqqət: ${failed.length} şəkil Cloudinary-dən silinmədi. Admin panelinə qeyd olundu.`);
+  return true;
 }
 function toggleDetails(id){ document.getElementById('det_'+id).classList.toggle('hidden'); }
 function toggleSel(id){ selected.has(id)?selected.delete(id):selected.add(id); render(); }
@@ -1055,9 +1056,10 @@ function openResolveModal(id){
     <div style="color:#c0392b;margin-top:8px">${q.problem.text}</div>
     <label>Problemin həlli *</label>
     <textarea id="solText" rows="3"></textarea>
-    <div style="display:flex;gap:6px;margin-top:10px">
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
       <button onclick="closeModal()" class="sec">Bağla</button>
       <button onclick="saveResolve('${id}')">Həll edildi</button>
+      ${q.status!=='medaxil'?`<button class="danger" onclick="deleteQaimeFromResolve('${id}')">🗑 Qaiməni Sil</button>`:''}
     </div>
   </div></div>`;
 }
@@ -1068,6 +1070,14 @@ async function saveResolve(id){
   await db.collection('qaimeler').doc(id).update({problem:{text:q.problem.text, solved:true, solution:sol}});
   dismissed.add(id);
   closeModal();
+}
+async function deleteQaimeFromResolve(id){
+  const ok = await deleteQaime(id);
+  if(ok){
+    dismissed.add(id);
+    pendingNotifIds = pendingNotifIds.filter(x=>x!==id);
+    closeModal();
+  }
 }
 
 function anbarMessages(){
@@ -1147,7 +1157,7 @@ function viewStats(){
   const problemli = qaimeler.filter(hasOpenProblem).length;
   const tecili = qaimeler.filter(isTecili).length;
 
-  const days = [...Array(7)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return d; }).reverse();
+  const days = [...Array(7)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return d; }).sort((a,b)=> (a.getDay()+6)%7 - (b.getDay()+6)%7);
   const dayCounts = days.map(d=> qaimeler.filter(q=>{ if(!q.createdAt) return false; const qd=q.createdAt.toDate?q.createdAt.toDate():new Date(q.createdAt); return qd.toDateString()===d.toDateString(); }).length);
   const maxC = Math.max(1,...dayCounts);
   const chart = `<div class="bar-chart">${days.map((d,i)=>`<div class="small">${d.toLocaleDateString('az-AZ',{weekday:'short',day:'numeric'})}</div><div class="bg"><div class="fg" style="width:${(dayCounts[i]/maxC*100)||2}%">${dayCounts[i]}</div></div>`).join('')}</div>`;
