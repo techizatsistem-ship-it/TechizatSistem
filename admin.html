@@ -155,7 +155,7 @@ function boot(){
   document.getElementById('userInfo').innerText = currentUser.name + ' çıxış';
   document.getElementById('userInfo').style.cursor='pointer';
   document.getElementById('userInfo').onclick = logout;
-  document.getElementById('navTabs').innerHTML = [['users','İstifadəçilər'],['qaimeler','Qaimlər'],['failed','Silinməyən şəkillər']]
+  document.getElementById('navTabs').innerHTML = [['analitik','Analitik'],['users','İstifadəçilər'],['qaimeler','Qaimlər'],['failed','Silinməyən şəkillər']]
     .map(t=>`<button data-n="${t[0]}" onclick="setNav('${t[0]}')">${t[1]}</button>`).join('');
   db.collection('users').onSnapshot(snap=>{ users = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
   db.collection('failedDeletes').orderBy('at','desc').onSnapshot(snap=>{ failedDeletes = snap.docs.map(d=>({id:d.id, ...d.data()})); render(); });
@@ -179,8 +179,105 @@ function render(){
   const af = document.activeElement;
   const afId = af && af.id, afStart = af && af.selectionStart, afEnd = af && af.selectionEnd;
   document.querySelectorAll('#navTabs button').forEach(b=>b.classList.toggle('active', b.dataset.n===curNav));
-  document.getElementById('main').innerHTML = curNav==='users' ? viewUsers() : (curNav==='qaimeler' ? viewQaimeler() : viewFailedDeletes());
+  document.getElementById('main').innerHTML = curNav==='analitik' ? viewAnalitik() : (curNav==='users' ? viewUsers() : (curNav==='qaimeler' ? viewQaimeler() : viewFailedDeletes()));
   if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
+}
+
+// ---- Analitik: sistem üzrə ümumi (user-dən asılı olmayan) statistika ----
+// Statuslar: yeni (mədaxil olunmayan/sorğuya düşən), islemede (işlənir),
+// sorgu (sorğudadır), tesdiqlenib (təsdiq edilib), medaxil (mədaxil olunub)
+let analitikData = null;
+let analitikLoading = false;
+async function loadAnalitikStats(){
+  if(analitikLoading) return;
+  analitikLoading = true;
+  analitikData = null;
+  render();
+  const statuses = ['yeni','islemede','sorgu','tesdiqlenib','medaxil'];
+  try{
+    const counts = {};
+    for(const st of statuses){
+      try{
+        const snap = await db.collection('qaimeler').where('status','==',st).count().get();
+        counts[st] = snap.data().count;
+      }catch(e){
+        // count() dəstəklənmirsə və ya xəta olarsa, sənədləri çəkib say
+        const snap = await db.collection('qaimeler').where('status','==',st).get();
+        counts[st] = snap.docs.length;
+      }
+    }
+    let checkedCount;
+    try{
+      checkedCount = (await db.collection('qaimeler').where('checked','==',true).count().get()).data().count;
+    }catch(e){
+      checkedCount = (await db.collection('qaimeler').where('checked','==',true).get()).docs.length;
+    }
+    let totalCount;
+    try{
+      totalCount = (await db.collection('qaimeler').count().get()).data().count;
+    }catch(e){
+      totalCount = (await db.collection('qaimeler').get()).docs.length;
+    }
+    const now = Date.now();
+    const weekAgoMs = now - 7*86400000, monthAgoMs = now - 30*86400000;
+    let medWeek, medMonth;
+    try{
+      const weekAgoTs = firebase.firestore.Timestamp.fromMillis(weekAgoMs);
+      const monthAgoTs = firebase.firestore.Timestamp.fromMillis(monthAgoMs);
+      medWeek = (await db.collection('qaimeler').where('status','==','medaxil').where('tookAt','>=',weekAgoTs).count().get()).data().count;
+      medMonth = (await db.collection('qaimeler').where('status','==','medaxil').where('tookAt','>=',monthAgoTs).count().get()).data().count;
+    }catch(e){
+      // index yoxdursa: bütün mədaxil olunmuşları çəkib klient tərəfdə süz
+      const snap = await db.collection('qaimeler').where('status','==','medaxil').get();
+      const docs = snap.docs.map(d=>d.data());
+      medWeek = docs.filter(q=> q.tookAt && (q.tookAt.toDate?q.tookAt.toDate():new Date(q.tookAt)).getTime()>weekAgoMs).length;
+      medMonth = docs.filter(q=> q.tookAt && (q.tookAt.toDate?q.tookAt.toDate():new Date(q.tookAt)).getTime()>monthAgoMs).length;
+    }
+    analitikData = {counts, checkedCount, totalCount, medWeek, medMonth, at: new Date()};
+  }catch(e){
+    console.error(e);
+    analitikData = {error:true};
+  }
+  analitikLoading = false;
+  render();
+}
+function viewAnalitik(){
+  if(!analitikData && !analitikLoading) loadAnalitikStats();
+  if(analitikLoading || !analitikData){
+    return `<div class="card"><h3>Analitik</h3><div class="small">Yüklənir...</div></div>`;
+  }
+  if(analitikData.error){
+    return `<div class="card"><h3>Analitik</h3><div class="small" style="color:red">Yüklənərkən xəta baş verdi.</div>
+      <button class="sec" style="margin-top:8px" onclick="loadAnalitikStats()">Yenidən yoxla</button></div>`;
+  }
+  const c = analitikData.counts;
+  const cards = [
+    ['Mədaxil olunmayan', c.yeni, '#c0392b'],
+    ['Sorğudadır', c.sorgu, '#d97706'],
+    ['İşlənir', c.islemede, '#2563eb'],
+    ['Təsdiq edilib', c.tesdiqlenib, '#7c3aed'],
+    ['Mədaxil olunub', c.medaxil, '#16a34a']
+  ];
+  const cardsHtml = cards.map(([label,val,color])=>`
+    <div style="flex:1;min-width:130px;background:#fff;border-radius:8px;padding:12px;border-left:4px solid ${color}">
+      <div class="small">${label}</div>
+      <div style="font-size:26px;font-weight:bold">${val}</div>
+    </div>`).join('');
+  return `<div class="card">
+    <h3>Analitik</h3>
+    <div class="small" style="margin-bottom:10px">Sistemdəki bütün qaimələrin statuslar üzrə cari sayı (istifadəçidən asılı olmayaraq, ümumi say).</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">${cardsHtml}</div>
+    <div class="small" style="margin-top:10px">Ümumi qaimə sayı: <b>${analitikData.totalCount}</b> · Bunlardan yoxlanılıb/təsdiq edilib (checked): <b>${analitikData.checkedCount}</b></div>
+    <button class="sec" style="margin-top:12px" onclick="loadAnalitikStats()">Yenilə</button>
+  </div>
+  <div class="card">
+    <h3>Mədaxil dinamikası</h3>
+    <table>
+      <tr><td>Son 7 gündə mədaxil olunan qaimə sayı (həftəlik)</td><td><b>${analitikData.medWeek}</b></td></tr>
+      <tr><td>Son 30 gündə mədaxil olunan qaimə sayı (aylıq)</td><td><b>${analitikData.medMonth}</b></td></tr>
+    </table>
+    <div class="small" style="margin-top:8px">Son yenilənmə: ${analitikData.at.toLocaleTimeString('az-AZ')}</div>
+  </div>`;
 }
 
 function viewUsers(){
