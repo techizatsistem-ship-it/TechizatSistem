@@ -183,63 +183,157 @@ function render(){
   if(afId){ const el=document.getElementById(afId); if(el){ el.focus(); if(afStart!=null) try{el.setSelectionRange(afStart,afEnd);}catch(e){} } }
 }
 
-// ---- Analitik: sistem üzrə ümumi (user-dən asılı olmayan) statistika ----
+// ---- Analitik: sistem üzrə ümumi (user-dən asılı olmayan) ətraflı statistika ----
 // Statuslar: yeni (mədaxil olunmayan/sorğuya düşən), islemede (işlənir),
 // sorgu (sorğudadır), tesdiqlenib (təsdiq edilib), medaxil (mədaxil olunub)
 let analitikData = null;
 let analitikLoading = false;
+function tsMillis(ts){ if(!ts) return null; return ts.toDate ? ts.toDate().getTime() : new Date(ts).getTime(); }
+function dayKey(ms){ const d=new Date(ms); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function dayLabel(ms){ const d=new Date(ms); return d.toLocaleDateString('az-AZ',{day:'2-digit',month:'2-digit'}); }
+function groupCount(docs, field){
+  const m = {};
+  docs.forEach(q=>{ const k = q[field] || '—'; m[k] = (m[k]||0)+1; });
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+}
+function topRowsHtml(pairs, limit, unit){
+  return pairs.slice(0,limit).map(([name,val])=>`<tr><td>${name}</td><td><b>${val}</b>${unit?' '+unit:''}</td></tr>`).join('') || '<tr><td colspan="2" class="small">Məlumat yoxdur</td></tr>';
+}
 async function loadAnalitikStats(){
   if(analitikLoading) return;
   analitikLoading = true;
   analitikData = null;
   render();
-  const statuses = ['yeni','islemede','sorgu','tesdiqlenib','medaxil'];
   try{
+    // 1) Başlıq kartları üçün ucuz say sorğuları
+    const statuses = ['yeni','islemede','sorgu','tesdiqlenib','medaxil'];
     const counts = {};
     for(const st of statuses){
-      try{
-        const snap = await db.collection('qaimeler').where('status','==',st).count().get();
-        counts[st] = snap.data().count;
-      }catch(e){
-        // count() dəstəklənmirsə və ya xəta olarsa, sənədləri çəkib say
-        const snap = await db.collection('qaimeler').where('status','==',st).get();
-        counts[st] = snap.docs.length;
-      }
+      try{ counts[st] = (await db.collection('qaimeler').where('status','==',st).count().get()).data().count; }
+      catch(e){ counts[st] = (await db.collection('qaimeler').where('status','==',st).get()).docs.length; }
     }
-    let checkedCount;
-    try{
-      checkedCount = (await db.collection('qaimeler').where('checked','==',true).count().get()).data().count;
-    }catch(e){
-      checkedCount = (await db.collection('qaimeler').where('checked','==',true).get()).docs.length;
+    let checkedCount, totalCount;
+    try{ checkedCount = (await db.collection('qaimeler').where('checked','==',true).count().get()).data().count; }
+    catch(e){ checkedCount = (await db.collection('qaimeler').where('checked','==',true).get()).docs.length; }
+    try{ totalCount = (await db.collection('qaimeler').count().get()).data().count; }
+    catch(e){ totalCount = (await db.collection('qaimeler').get()).docs.length; }
+
+    // 2) Aktiv boru xətti (yeni+işlənir+sorğu+təsdiq) — tam sənədlər, diqqət tələb edənləri görmək üçün
+    let activeDocs = [];
+    for(const st of ['yeni','islemede','sorgu','tesdiqlenib']){
+      const snap = await db.collection('qaimeler').where('status','==',st).get();
+      activeDocs = activeDocs.concat(snap.docs.map(d=>({id:d.id,...d.data()})));
     }
-    let totalCount;
-    try{
-      totalCount = (await db.collection('qaimeler').count().get()).data().count;
-    }catch(e){
-      totalCount = (await db.collection('qaimeler').get()).docs.length;
-    }
+
+    // 3) Son 14 gündə yaradılan bütün qaimələr — daxilolma trendi və top sifarişçi/şöbə üçün
     const now = Date.now();
-    const weekAgoMs = now - 7*86400000, monthAgoMs = now - 30*86400000;
-    let medWeek, medMonth;
+    const day14Ago = now - 14*86400000, day30Ago = now - 30*86400000;
+    let createdRecent = [];
     try{
-      const weekAgoTs = firebase.firestore.Timestamp.fromMillis(weekAgoMs);
-      const monthAgoTs = firebase.firestore.Timestamp.fromMillis(monthAgoMs);
-      medWeek = (await db.collection('qaimeler').where('status','==','medaxil').where('tookAt','>=',weekAgoTs).count().get()).data().count;
-      medMonth = (await db.collection('qaimeler').where('status','==','medaxil').where('tookAt','>=',monthAgoTs).count().get()).data().count;
+      const ts14 = firebase.firestore.Timestamp.fromMillis(day14Ago);
+      const snap = await db.collection('qaimeler').where('createdAt','>=',ts14).get();
+      createdRecent = snap.docs.map(d=>({id:d.id,...d.data()}));
     }catch(e){
-      // index yoxdursa: bütün mədaxil olunmuşları çəkib klient tərəfdə süz
-      const snap = await db.collection('qaimeler').where('status','==','medaxil').get();
-      const docs = snap.docs.map(d=>d.data());
-      medWeek = docs.filter(q=> q.tookAt && (q.tookAt.toDate?q.tookAt.toDate():new Date(q.tookAt)).getTime()>weekAgoMs).length;
-      medMonth = docs.filter(q=> q.tookAt && (q.tookAt.toDate?q.tookAt.toDate():new Date(q.tookAt)).getTime()>monthAgoMs).length;
+      const snap = await db.collection('qaimeler').get();
+      createdRecent = snap.docs.map(d=>({id:d.id,...d.data()})).filter(q=>{ const m=tsMillis(q.createdAt); return m && m>=day14Ago; });
     }
-    analitikData = {counts, checkedCount, totalCount, medWeek, medMonth, at: new Date()};
+
+    // 4) Son 30 gündə mədaxil olunanlar — mədaxil trendi, işçi reytinqi, orta emal müddəti üçün
+    let medaxilRecent = [];
+    try{
+      const ts30 = firebase.firestore.Timestamp.fromMillis(day30Ago);
+      const snap = await db.collection('qaimeler').where('status','==','medaxil').where('tookAt','>=',ts30).get();
+      medaxilRecent = snap.docs.map(d=>({id:d.id,...d.data()}));
+    }catch(e){
+      const snap = await db.collection('qaimeler').where('status','==','medaxil').get();
+      medaxilRecent = snap.docs.map(d=>({id:d.id,...d.data()})).filter(q=>{ const m=tsMillis(q.tookAt); return m && m>=day30Ago; });
+    }
+    const medWeek = medaxilRecent.filter(q=>{ const m=tsMillis(q.tookAt); return m && m>=now-7*86400000; }).length;
+    const medMonth = medaxilRecent.length;
+
+    // ---- Hesablamalar ----
+    // Günlük trend (son 14 gün): daxil olan vs mədaxil edilən
+    const trend = [];
+    for(let i=13;i>=0;i--){
+      const dayStart = now - i*86400000;
+      const key = dayKey(dayStart);
+      const created = createdRecent.filter(q=>{ const m=tsMillis(q.createdAt); return m && dayKey(m)===key; }).length;
+      const completed = medaxilRecent.filter(q=>{ const m=tsMillis(q.tookAt); return m && dayKey(m)===key; }).length;
+      trend.push({label:dayLabel(dayStart), created, completed});
+    }
+
+    // Ən uzun gözləyən qaimələr (aktiv, mədaxil olunmamış)
+    const oldestPending = activeDocs.slice().sort((a,b)=>(tsMillis(a.createdAt)||0)-(tsMillis(b.createdAt)||0)).slice(0,8)
+      .map(q=>({no:q.no, sifarisVeren:q.sifarisVeren, anbar:q.anbar, kimUcun:q.kimUcun, status:q.status, days:((now-(tsMillis(q.createdAt)||now))/86400000)}));
+
+    // Açıq problemlər (aktiv + son mədaxil olunanlar arasında)
+    const problemPool = [...activeDocs, ...medaxilRecent];
+    const openProblems = problemPool.filter(hasOpenProblem).map(q=>({no:q.no, sifarisVeren:q.sifarisVeren, anbar:q.anbar, text:q.problem&&q.problem.text||'', status:q.status}));
+
+    // Təcili qaimələr (aktiv, mədaxil olunmamış)
+    const tecililer = activeDocs.filter(isTecili).map(q=>({no:q.no, sifarisVeren:q.sifarisVeren, anbar:q.anbar, kimUcun:q.kimUcun, status:q.status}));
+
+    // Anbar/şöbə/sifarişçi/işçi üzrə bölgü (aktiv + son 30 gün mədaxil, dublikatsız)
+    const seen = new Set();
+    const combined = [...activeDocs, ...medaxilRecent].filter(q=>{ if(seen.has(q.id)) return false; seen.add(q.id); return true; });
+    const byAnbar = groupCount(combined, 'anbar');
+    const byKimUcun = groupCount(combined, 'kimUcun');
+    const bySifarisci = groupCount(createdRecent, 'sifarisVeren');
+
+    // İşçi reytinqi: son 30 gündə ən çox mədaxil edən, hər biri üçün orta emal müddəti (saatla)
+    const workerMap = {};
+    medaxilRecent.forEach(q=>{
+      const name = q.isleyen || '—';
+      if(!workerMap[name]) workerMap[name] = {count:0, totalHrs:0, withTime:0};
+      workerMap[name].count++;
+      const c = tsMillis(q.createdAt), t = tsMillis(q.tookAt);
+      if(c && t && t>=c){ workerMap[name].totalHrs += (t-c)/3600000; workerMap[name].withTime++; }
+    });
+    const workerLeaderboard = Object.entries(workerMap).map(([name,v])=>({
+      name, count:v.count, avgHrs: v.withTime ? (v.totalHrs/v.withTime) : null
+    })).sort((a,b)=>b.count-a.count);
+
+    // Ümumi orta emal müddəti (son 30 gün, saatla və günlə)
+    let totalHrs=0, withTime=0;
+    medaxilRecent.forEach(q=>{
+      const c = tsMillis(q.createdAt), t = tsMillis(q.tookAt);
+      if(c && t && t>=c){ totalHrs += (t-c)/3600000; withTime++; }
+    });
+    const avgProcessHrs = withTime ? (totalHrs/withTime) : null;
+
+    analitikData = {
+      counts, checkedCount, totalCount, medWeek, medMonth, trend,
+      oldestPending, openProblems, tecililer,
+      byAnbar, byKimUcun, bySifarisci, workerLeaderboard, avgProcessHrs,
+      activeTotal: activeDocs.length, at: new Date()
+    };
   }catch(e){
     console.error(e);
     analitikData = {error:true};
   }
   analitikLoading = false;
   render();
+}
+function trendChartSvg(trend){
+  const w=700, h=170, padL=30, padB=22, padT=10, padR=6;
+  const innerW = w-padL-padR, innerH = h-padT-padB;
+  const maxVal = Math.max(1, ...trend.map(t=>Math.max(t.created,t.completed)));
+  const bw = innerW/trend.length;
+  const bars = trend.map((t,i)=>{
+    const x = padL + i*bw;
+    const hC = (t.created/maxVal)*innerH, hD = (t.completed/maxVal)*innerH;
+    const bw2 = (bw*0.36);
+    const yC = padT+innerH-hC, yD = padT+innerH-hD;
+    const showLabel = trend.length<=14 || i%2===0;
+    return `<rect x="${x+2}" y="${yC}" width="${bw2}" height="${hC}" fill="#2563eb"></rect>
+      <rect x="${x+2+bw2+2}" y="${yD}" width="${bw2}" height="${hD}" fill="#16a34a"></rect>
+      ${showLabel?`<text x="${x+bw/2}" y="${h-6}" font-size="9" fill="#666" text-anchor="middle">${t.label}</text>`:''}`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;max-width:700px">
+    <line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="#ccc"></line>
+    ${bars}
+  </svg>
+  <div class="small" style="margin-top:4px"><span style="color:#2563eb">■</span> Daxil olan &nbsp; <span style="color:#16a34a">■</span> Mədaxil edilən</div>`;
 }
 function viewAnalitik(){
   if(!analitikData && !analitikLoading) loadAnalitikStats();
@@ -250,7 +344,8 @@ function viewAnalitik(){
     return `<div class="card"><h3>Analitik</h3><div class="small" style="color:red">Yüklənərkən xəta baş verdi.</div>
       <button class="sec" style="margin-top:8px" onclick="loadAnalitikStats()">Yenidən yoxla</button></div>`;
   }
-  const c = analitikData.counts;
+  const d = analitikData;
+  const c = d.counts;
   const cards = [
     ['Mədaxil olunmayan', c.yeni, '#c0392b'],
     ['Sorğudadır', c.sorgu, '#d97706'],
@@ -263,20 +358,60 @@ function viewAnalitik(){
       <div class="small">${label}</div>
       <div style="font-size:26px;font-weight:bold">${val}</div>
     </div>`).join('');
+
+  const oldestRows = d.oldestPending.map(q=>`<tr><td>Qaimə_${q.no}</td><td>${q.sifarisVeren||''}</td><td>${q.anbar||''}</td><td>${statusLabel(q.status)}</td><td><b style="color:${q.days>3?'#c0392b':'#222'}">${q.days.toFixed(1)} gün</b></td></tr>`).join('') || '<tr><td colspan="5" class="small">Gözləyən qaimə yoxdur</td></tr>';
+  const problemRows = d.openProblems.map(q=>`<tr><td>Qaimə_${q.no}</td><td>${q.sifarisVeren||''}</td><td>${q.anbar||''}</td><td>${q.text||'Var'}</td></tr>`).join('') || '<tr><td colspan="4" class="small">Açıq problem yoxdur</td></tr>';
+  const teciliRows = d.tecililer.map(q=>`<tr><td>Qaimə_${q.no}</td><td>${q.sifarisVeren||''}</td><td>${q.anbar||''}</td><td>${q.kimUcun||''}</td><td>${statusLabel(q.status)}</td></tr>`).join('') || '<tr><td colspan="5" class="small">Təcili qaimə yoxdur</td></tr>';
+  const workerRows = d.workerLeaderboard.slice(0,10).map(w=>`<tr><td>${w.name}</td><td><b>${w.count}</b></td><td>${w.avgHrs!=null ? (w.avgHrs<24 ? w.avgHrs.toFixed(1)+' saat' : (w.avgHrs/24).toFixed(1)+' gün') : '—'}</td></tr>`).join('') || '<tr><td colspan="3" class="small">Məlumat yoxdur</td></tr>';
+
   return `<div class="card">
     <h3>Analitik</h3>
     <div class="small" style="margin-bottom:10px">Sistemdəki bütün qaimələrin statuslar üzrə cari sayı (istifadəçidən asılı olmayaraq, ümumi say).</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">${cardsHtml}</div>
-    <div class="small" style="margin-top:10px">Ümumi qaimə sayı: <b>${analitikData.totalCount}</b> · Bunlardan yoxlanılıb/təsdiq edilib (checked): <b>${analitikData.checkedCount}</b></div>
+    <div class="small" style="margin-top:10px">Ümumi qaimə sayı: <b>${d.totalCount}</b> · Yoxlanılıb/təsdiq edilib (checked): <b>${d.checkedCount}</b> · Hazırda aktiv (proses xəttində): <b>${d.activeTotal}</b></div>
+    <div class="small" style="margin-top:4px">Son 7 gündə mədaxil: <b>${d.medWeek}</b> · Son 30 gündə mədaxil: <b>${d.medMonth}</b> · Orta emal müddəti (yaranmadan mədaxilə qədər): <b>${d.avgProcessHrs!=null ? (d.avgProcessHrs<24 ? d.avgProcessHrs.toFixed(1)+' saat' : (d.avgProcessHrs/24).toFixed(1)+' gün') : '—'}</b></div>
     <button class="sec" style="margin-top:12px" onclick="loadAnalitikStats()">Yenilə</button>
+    <div class="small" style="margin-top:6px">Son yenilənmə: ${d.at.toLocaleTimeString('az-AZ')}</div>
   </div>
+
   <div class="card">
-    <h3>Mədaxil dinamikası</h3>
-    <table>
-      <tr><td>Son 7 gündə mədaxil olunan qaimə sayı (həftəlik)</td><td><b>${analitikData.medWeek}</b></td></tr>
-      <tr><td>Son 30 gündə mədaxil olunan qaimə sayı (aylıq)</td><td><b>${analitikData.medMonth}</b></td></tr>
-    </table>
-    <div class="small" style="margin-top:8px">Son yenilənmə: ${analitikData.at.toLocaleTimeString('az-AZ')}</div>
+    <h3>Son 14 gün — daxil olan vs mədaxil edilən</h3>
+    ${trendChartSvg(d.trend)}
+  </div>
+
+  <div class="card">
+    <h3>⚠ Ən uzun gözləyən qaimələr</h3>
+    <table><tr><th>Qaimə</th><th>Sifarişçi</th><th>Anbar</th><th>Status</th><th>Gözləmə</th></tr>${oldestRows}</table>
+  </div>
+
+  <div class="card">
+    <h3>⚠ Açıq problemlər (${d.openProblems.length})</h3>
+    <table><tr><th>Qaimə</th><th>Sifarişçi</th><th>Anbar</th><th>Problem</th></tr>${problemRows}</table>
+  </div>
+
+  <div class="card">
+    <h3>⚠ Təcili qaimələr (${d.tecililer.length})</h3>
+    <table><tr><th>Qaimə</th><th>Sifarişçi</th><th>Anbar</th><th>Kim üçün</th><th>Status</th></tr>${teciliRows}</table>
+  </div>
+
+  <div class="card">
+    <h3>İşçi reytinqi — son 30 gün mədaxil</h3>
+    <table><tr><th>İşçi</th><th>Mədaxil sayı</th><th>Orta emal müddəti</th></tr>${workerRows}</table>
+  </div>
+
+  <div class="card">
+    <h3>Anbarlar üzrə yük bölgüsü</h3>
+    <table><tr><th>Anbar</th><th>Say</th></tr>${topRowsHtml(d.byAnbar,10)}</table>
+  </div>
+
+  <div class="card">
+    <h3>Ən çox sifariş edilən şöbələr (kim üçün)</h3>
+    <table><tr><th>Şöbə / Kim üçün</th><th>Say</th></tr>${topRowsHtml(d.byKimUcun,10)}</table>
+  </div>
+
+  <div class="card">
+    <h3>Ən aktiv sifarişçilər — son 14 gün</h3>
+    <table><tr><th>Sifarişçi</th><th>Say</th></tr>${topRowsHtml(d.bySifarisci,10)}</table>
   </div>`;
 }
 
