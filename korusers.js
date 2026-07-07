@@ -265,8 +265,8 @@ const korusersData = [
         "name": "K -  (SM44)"
     },
     {
-        "id": "SM46",
-        "name": "K - Tural Hacıyev (SM46)"
+        "id": "ST041",
+        "name": "K - Tural Hacıyev (ST041)"
     },
     {
         "id": "SM50",
