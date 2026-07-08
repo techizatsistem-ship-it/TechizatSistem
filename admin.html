@@ -140,7 +140,7 @@ function isToday(ts){ if(!ts) return false; const d=ts.toDate?ts.toDate():new Da
 function daysAgo(ts){ if(!ts) return 0; const d=ts.toDate?ts.toDate():new Date(ts); return (Date.now()-d.getTime())/86400000; }
 function isTecili(q){ return q.status!=='medaxil' && q.tecili===true; }
 function hasOpenProblem(q){ return q.problem && !q.problem.solved; }
-function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':'Mədaxil edildi'); }
+function statusLabel(s){ return s==='yeni'?'Yeni':(s==='islemede'?'İşlənir':(s==='sorgu'?'Sorğudadır':(s==='tesdiqlenib'?'Təsdiq edilib':'Mədaxil edildi'))); }
 function statusWithWho(q){
   if(q.status==='islemede') return `İşlənir — ${q.isleyen||'?'}`;
   if(q.status==='medaxil') return `Mədaxil edildi — ${q.isleyen||'?'}`;
@@ -359,7 +359,7 @@ function viewAnalitik(){
       <div style="font-size:26px;font-weight:bold">${val}</div>
     </div>`).join('');
 
-  const oldestRows = d.oldestPending.map(q=>`<tr><td>Qaimə_${q.no}</td><td>${q.sifarisVeren||''}</td><td>${q.anbar||''}</td><td>${statusLabel(q.status)}</td><td><b style="color:${q.days>3?'#c0392b':'#222'}">${q.days.toFixed(1)} gün</b></td></tr>`).join('') || '<tr><td colspan="5" class="small">Gözləyən qaimə yoxdur</td></tr>';
+  const oldestRows = d.oldestPending.map(q=>`<tr><td>Qaimə_${q.no}</td><td>${q.sifarisVeren||''}</td><td>${q.anbar||''}</td><td>${q.kimUcun||''}</td><td>${statusLabel(q.status)}</td><td><b style="color:${q.days>3?'#c0392b':'#222'}">${q.days.toFixed(1)} gün</b></td></tr>`).join('') || '<tr><td colspan="6" class="small">Gözləyən qaimə yoxdur</td></tr>';
   const problemRows = d.openProblems.map(q=>`<tr><td>Qaimə_${q.no}</td><td>${q.sifarisVeren||''}</td><td>${q.anbar||''}</td><td>${q.text||'Var'}</td></tr>`).join('') || '<tr><td colspan="4" class="small">Açıq problem yoxdur</td></tr>';
   const teciliRows = d.tecililer.map(q=>`<tr><td>Qaimə_${q.no}</td><td>${q.sifarisVeren||''}</td><td>${q.anbar||''}</td><td>${q.kimUcun||''}</td><td>${statusLabel(q.status)}</td></tr>`).join('') || '<tr><td colspan="5" class="small">Təcili qaimə yoxdur</td></tr>';
   const workerRows = d.workerLeaderboard.slice(0,10).map(w=>`<tr><td>${w.name}</td><td><b>${w.count}</b></td><td>${w.avgHrs!=null ? (w.avgHrs<24 ? w.avgHrs.toFixed(1)+' saat' : (w.avgHrs/24).toFixed(1)+' gün') : '—'}</td></tr>`).join('') || '<tr><td colspan="3" class="small">Məlumat yoxdur</td></tr>';
@@ -381,7 +381,7 @@ function viewAnalitik(){
 
   <div class="card">
     <h3>⚠ Ən uzun gözləyən qaimələr</h3>
-    <table><tr><th>Qaimə</th><th>Sifarişçi</th><th>Anbar</th><th>Status</th><th>Gözləmə</th></tr>${oldestRows}</table>
+    <table><tr><th>Qaimə</th><th>Sifarişçi</th><th>Anbar</th><th>Kim üçün?</th><th>Status</th><th>Gözləmə</th></tr>${oldestRows}</table>
   </div>
 
   <div class="card">
