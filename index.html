@@ -548,11 +548,25 @@ async function submitQaime(){
 
 function viewMine(){
   const allMine = qaimeler.filter(q=>q.sifarisVeren===currentUser.name);
-  const mine = allMine.filter(q=>q.status!=='medaxil');
+  const mineSearch = document.getElementById('mineSearch')?.value || '';
+  let mine = allMine.filter(q=>q.status!=='medaxil');
+  if(mineSearch) mine = mine.filter(q=> String(q.no).includes(mineSearch) || (q.anbar||'').toLowerCase().includes(mineSearch.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(mineSearch.toLowerCase()));
   const pend = pendingQaimeler;
-  const pager = (mineMedPage.maxKnownPage>1 || mineMedPage.hasMore) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(mineMedPage.maxKnownPage)].map((_,i)=>`<button class="${mineMedPage.page===i+1?'':'sec'}" style="padding:4px 10px" onclick="goMineMedaxilPage(${i+1})">${i+1}</button>`).join('')}${mineMedPage.hasMore?`<button class="sec" style="padding:4px 10px" onclick="goMineMedaxilPage(${mineMedPage.maxKnownPage+1})">Sonrakı</button>`:''}</div>` : '';
-  return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>${listHead()}${pend.map(r=>pendingRowHtml(r)).join('')}${mine.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}</div>
-  <div class="card"><h3>Mədaxil Olunanlar</h3>${listHead()}${mineMedPage.loading?'<div class="small">Yüklənir...</div>':(mineMedPage.docs.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>')}${pager}</div>`;
+  const mineMedSearch = document.getElementById('mineMedSearch')?.value || '';
+  let mineMedList, pager;
+  if(mineMedSearch){
+    mineMedList = qaimeler.filter(q=> q.sifarisVeren===currentUser.name && q.status==='medaxil' && (String(q.no).includes(mineMedSearch) || (q.anbar||'').toLowerCase().includes(mineMedSearch.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(mineMedSearch.toLowerCase())));
+    pager = '';
+  } else {
+    mineMedList = mineMedPage.docs;
+    pager = (mineMedPage.maxKnownPage>1 || mineMedPage.hasMore) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">${[...Array(mineMedPage.maxKnownPage)].map((_,i)=>`<button class="${mineMedPage.page===i+1?'':'sec'}" style="padding:4px 10px" onclick="goMineMedaxilPage(${i+1})">${i+1}</button>`).join('')}${mineMedPage.hasMore?`<button class="sec" style="padding:4px 10px" onclick="goMineMedaxilPage(${mineMedPage.maxKnownPage+1})">Sonrakı</button>`:''}</div>` : '';
+  }
+  return `<div class="card"><h3>Mənim Qaimlərim (${mine.length})${pend.length?` <span class="badge">${pend.length}</span>`:''}</h3>
+    <input id="mineSearch" placeholder="Axtar (qaimə № / anbar)" value="${mineSearch}" oninput="render()">
+    ${listHead()}${pend.map(r=>pendingRowHtml(r)).join('')}${mine.map(q=>rowHtml(q)).join('') || (pend.length?'':'<div class="small">Yoxdur</div>')}</div>
+  <div class="card"><h3>Mədaxil Olunanlar</h3>
+    <input id="mineMedSearch" placeholder="Axtar (qaimə № / anbar)" value="${mineMedSearch}" oninput="render()">
+    ${listHead()}${(!mineMedSearch && mineMedPage.loading)?'<div class="small">Yüklənir...</div>':(mineMedList.map(q=>rowHtml(q)).join('') || '<div class="small">Yoxdur</div>')}${pager}</div>`;
 }
 function pendingRowHtml(rec){
   return `<div class="row tecili">
@@ -580,7 +594,7 @@ function viewAnbarList(src){
   const search = document.getElementById('anbarSearch')?.value || '';
   const sorguCodesVal = document.getElementById('sorguCodes')?.value || '';
   const PAGE_SIZE = 10;
-  const isPagedMed = (curTab==='medaxil' && src==='sifaris');
+  const isPagedMed = (curTab==='medaxil' && src==='sifaris' && !search);
   let pageList, pager;
   if(isPagedMed){
     pageList = medPage.docs;
@@ -675,6 +689,7 @@ function rowHtml(q, anbarMode){
     </div>
   </div>`;
 }
+function canSorgu(q){ const a = String(q.anbar||'').trim(); return a==='01' || a==='1'; }
 function anbarActions(q){
   if(currentUser.mode!=='anbar') return '';
   let html = '';
@@ -682,7 +697,7 @@ function anbarActions(q){
     html += `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
       <button class="danger" onclick="openProblemModal('${q.id}')">Problem bildir</button>
       <button onclick="openMedaxilModal('${q.id}')">Mədaxil edildi</button>
-      <button class="sec" onclick="openMedaxilModal('${q.id}',true)">Sorğuya göndər</button>
+      ${canSorgu(q)?`<button class="sec" onclick="openMedaxilModal('${q.id}',true)">Sorğuya göndər</button>`:''}
       <button class="sec" onclick="imtinaEt('${q.id}')">İmtina et</button>
     </div>`;
   }
@@ -1017,6 +1032,10 @@ document.addEventListener('paste', e=>{
   if(added) renderMedPreview();
 });
 async function saveMedaxil(id, isSorgu){
+  if(isSorgu){
+    const q0 = qaimeler.find(x=>x.id===id);
+    if(q0 && !canSorgu(q0)){ const err0=document.getElementById('medErr'); if(err0) err0.innerText='Bu anbar üçün sorğuya göndərmə mümkün deyil, birbaşa mədaxil edin.'; return; }
+  }
   const no = document.getElementById('medNo').value.trim();
   const err = document.getElementById('medErr');
   if(!no){ if(err) err.innerText = 'Qaimə nömrəsi mütləqdir'; return; }
