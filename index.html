@@ -602,7 +602,7 @@ function viewAnbarList(src){
   } else {
     let list = filterByTab(curTab, src);
     if(search) list = list.filter(q=> String(q.no).includes(search) || (q.anbar||'').toLowerCase().includes(search.toLowerCase()) || (q.kimUcun||'').toLowerCase().includes(search.toLowerCase()));
-    if(curTab==='aktiv') list = list.slice().sort((a,b)=> tsMillis(a.createdAt)-tsMillis(b.createdAt));
+    if(curTab==='aktiv') list = list.slice().sort((a,b)=> ((isTecili(b)?1:0)-(isTecili(a)?1:0)) || (tsMillis(a.createdAt)-tsMillis(b.createdAt)));
     else list = list.slice().sort((a,b)=> (isTecili(b)?1:0)-(isTecili(a)?1:0));
     const pageCount = Math.max(1, Math.ceil(list.length/PAGE_SIZE));
     if(curPage>pageCount) curPage = pageCount;
